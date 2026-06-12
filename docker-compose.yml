@@ -1,0 +1,50 @@
+# Despliegue del backend ClashPlanner: API + SQL Server.
+#
+# Uso:
+#   cd server
+#   cp .env.example .env   # y rellena SA_PASSWORD y JWT_SIGNING_KEY
+#   docker compose up -d --build
+#
+# La API queda en http://localhost:5117 (mapea el 8080 del contenedor). En
+# producción, ponla detrás de un proxy inverso con HTTPS y ajusta WEB_ORIGIN.
+
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD}
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build: ./ClashPlanner.Api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # SQL Server del propio compose (red interna 'db').
+      ConnectionStrings__DefaultConnection: "Server=db;Database=ClashPlanner;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;Encrypt=False"
+      # Secreto de firma JWT (≥32 caracteres). NUNCA en el repo.
+      Jwt__SigningKey: ${JWT_SIGNING_KEY}
+      Jwt__Issuer: ClashPlanner
+      Jwt__Audience: ClashPlanner
+      # Origen permitido por CORS (dominio de la web). Por defecto, el dev server.
+      Cors__Origins__0: ${WEB_ORIGIN:-http://localhost:5173}
+    ports:
+      - "5117:8080"
+    volumes:
+      # Claves de Data Protection persistentes (para descifrar tokens tras reiniciar).
+      - dp-keys:/keys
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  mssql-data:
+  dp-keys:

@@ -1,0 +1,16 @@
+# .NET
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+.vs/
+*.user
+*.suo
+
+# Secretos de despliegue (nunca subir)
+.env
+
+# Documentación: por política del proyecto no se versionan ficheros .md
+*.md
+
+*.log
+.DS_Store

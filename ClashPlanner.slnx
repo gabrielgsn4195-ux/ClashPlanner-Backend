@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ClashPlanner.Api.Tests/ClashPlanner.Api.Tests.csproj" />
+  <Project Path="ClashPlanner.Api/ClashPlanner.Api.csproj" />
+</Solution>
