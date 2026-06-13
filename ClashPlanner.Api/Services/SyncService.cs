@@ -39,8 +39,7 @@ public class SyncService(AppDbContext db)
     /// <param name="req">Snapshot a guardar y revisión base del cliente.</param>
     public async Task<SyncResponse> PushAsync(string userId, PushRequest req)
     {
-        var state = await db.UserSyncStates.FirstOrDefaultAsync(s => s.UserId == userId);
-        var current = state?.Revision ?? 0;
+        var current = await GetRevisionAsync(userId);
 
         if (req.BaseRevision != current)
         {
@@ -50,30 +49,46 @@ public class SyncService(AppDbContext db)
             return new SyncResponse { Revision = current, Conflict = true, Data = serverData };
         }
 
-        await using var tx = await db.Database.BeginTransactionAsync();
+        var newRevision = current + 1;
 
-        // Reemplazo total del snapshot del usuario.
-        await db.Accounts.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-        await db.Jobs.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-        await db.Boosts.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-        await db.HelperStates.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-        await db.Plans.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-        await db.Overrides.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-        await db.Deletions.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-
-        WriteSnapshot(userId, req.Data);
-
-        if (state is null)
+        // `EnableRetryOnFailure` (estrategia de reintento de SQL Server) NO admite
+        // transacciones iniciadas a mano: hay que ejecutarlas dentro de una
+        // estrategia de ejecución para que el bloque se reintente como una unidad.
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
         {
-            state = new UserSyncState { UserId = userId, Revision = 0 };
-            db.UserSyncStates.Add(state);
-        }
-        state.Revision = current + 1;
+            // Si hubo un reintento, descarta lo añadido al contexto en el intento
+            // anterior (los ExecuteDelete son SQL directo y no se rastrean).
+            db.ChangeTracker.Clear();
 
-        await db.SaveChangesAsync();
-        await tx.CommitAsync();
+            await using var tx = await db.Database.BeginTransactionAsync();
 
-        return new SyncResponse { Revision = state.Revision };
+            // Reemplazo total del snapshot del usuario.
+            await db.Accounts.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+            await db.Jobs.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+            await db.Boosts.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+            await db.HelperStates.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+            await db.Plans.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+            await db.Overrides.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+            await db.Deletions.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+
+            WriteSnapshot(userId, req.Data);
+
+            var state = await db.UserSyncStates.FirstOrDefaultAsync(s => s.UserId == userId);
+            if (state is null)
+            {
+                db.UserSyncStates.Add(new UserSyncState { UserId = userId, Revision = newRevision });
+            }
+            else
+            {
+                state.Revision = newRevision;
+            }
+
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+        });
+
+        return new SyncResponse { Revision = newRevision };
     }
 
     private async Task<long> GetRevisionAsync(string userId) =>
