@@ -1,5 +1,6 @@
 using ClashPlanner.Api.Models;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -33,8 +34,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     {
         base.OnModelCreating(b);
 
+        // Nombres descriptivos para las tablas de Identity (por defecto `AspNet*`).
+        b.Entity<ApplicationUser>().ToTable("Users");
+        b.Entity<IdentityRole>().ToTable("Roles");
+        b.Entity<IdentityUserRole<string>>().ToTable("UserRoles");
+        b.Entity<IdentityUserClaim<string>>().ToTable("UserClaims");
+        b.Entity<IdentityUserLogin<string>>().ToTable("UserLogins");
+        b.Entity<IdentityRoleClaim<string>>().ToTable("RoleClaims");
+        b.Entity<IdentityUserToken<string>>().ToTable("UserTokens");
+
         b.Entity<AccountEntity>(e =>
         {
+            // La «cuenta de juego» se llama Aldea en el producto → tabla `Villages`.
+            e.ToTable("Villages");
             e.HasKey(x => new { x.UserId, x.Id });
             e.HasIndex(x => x.UserId);
         });

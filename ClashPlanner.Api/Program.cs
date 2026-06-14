@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using ClashPlanner.Api.Data;
 using Microsoft.AspNetCore.DataProtection;
 using ClashPlanner.Api.Endpoints;
@@ -83,6 +84,16 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.AllowAnyHeader().AllowAnyMethod();
 }));
 
+// Límite de tasa del proxy de CoC (abierto, sin sesión): por IP, ventana fija.
+// Protege el único token de servidor de un uso abusivo de la cuota de la API.
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy("coc", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { Window = TimeSpan.FromMinutes(1), PermitLimit = 30, QueueLimit = 0 }));
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -104,6 +115,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

@@ -36,6 +36,9 @@ services:
       Jwt__Audience: ClashPlanner
       # Origen permitido por CORS (dominio de la web). Por defecto, el dev server.
       Cors__Origins__0: ${WEB_ORIGIN:-http://localhost:5173}
+      # Token ÚNICO de la API de CoC (el usuario final nunca lo ve) + proxy RoyaleAPI.
+      Coc__Token: ${COC_API_TOKEN}
+      Coc__UseProxy: ${COC_USE_PROXY:-true}
     ports:
       - "5117:8080"
     volumes:
