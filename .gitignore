@@ -9,8 +9,10 @@
 # Secretos de despliegue (nunca subir)
 .env
 
-# Documentación: por política del proyecto no se versionan ficheros .md
+# Documentación: por política del proyecto no se versionan ficheros .md,
+# salvo el README del proyecto.
 *.md
+!README.md
 
 *.log
 .DS_Store
