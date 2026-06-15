@@ -17,6 +17,8 @@ public class GameEventDto
     /// <summary>Fin programado (epoch ms). null = sin límite superior.</summary>
     public long? EndsAt { get; set; }
     public List<EventEffectDto> Effects { get; set; } = [];
+    /// <summary>Si está activo, habilita el slot extra del Constructor Duende.</summary>
+    public bool GoblinBuilder { get; set; }
     public EventBannerDto? Banner { get; set; }
 }
 
@@ -31,7 +33,8 @@ public class EventEffectDto
     public string? Village { get; set; }
     /// <summary>Vía: "builder" | "lab" | "pet".</summary>
     public string? Track { get; set; }
-    public string? Category { get; set; }
+    /// <summary>Categorías (vacío/ausente = todas).</summary>
+    public List<string>? Categories { get; set; }
     /// <summary>Recurso (solo coste).</summary>
     public string? Resource { get; set; }
 }

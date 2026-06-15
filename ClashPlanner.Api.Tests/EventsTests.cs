@@ -53,7 +53,8 @@ public class EventsTests(ApiFactory factory) : IClassFixture<ApiFactory>
             enabled = true,
             startsAt = 1000L,
             endsAt = 2000L,
-            effects = new[] { new { target = "time", percent = 50.0, track = "lab" } },
+            goblinBuilder = true,
+            effects = new[] { new { target = "cost", percent = 50.0, categories = new[] { "defense", "wall" } } },
             banner = new { show = true, message = "Cuidado con tus gemas 💎" }
         }
     };
@@ -102,7 +103,9 @@ public class EventsTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("Constructor Duende", e.GetProperty("name").GetString());
         Assert.Equal(1000L, e.GetProperty("startsAt").GetInt64());
         Assert.Equal(2000L, e.GetProperty("endsAt").GetInt64());
-        Assert.Equal("lab", e.GetProperty("effects")[0].GetProperty("track").GetString());
+        Assert.True(e.GetProperty("goblinBuilder").GetBoolean());
+        var cats = e.GetProperty("effects")[0].GetProperty("categories").EnumerateArray().Select(c => c.GetString()).ToList();
+        Assert.Equal(new[] { "defense", "wall" }, cats);
         Assert.Equal(50.0, e.GetProperty("effects")[0].GetProperty("percent").GetDouble());
         Assert.True(e.GetProperty("banner").GetProperty("show").GetBoolean());
         Assert.Equal("Cuidado con tus gemas 💎", e.GetProperty("banner").GetProperty("message").GetString());
