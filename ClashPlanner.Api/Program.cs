@@ -169,6 +169,7 @@ app.MapAuthEndpoints();
 app.MapSyncEndpoints();
 app.MapCocEndpoints();
 app.MapAdminEndpoints();
+app.MapEventsEndpoints();
 
 app.Run();
 

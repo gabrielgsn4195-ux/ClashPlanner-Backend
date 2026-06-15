@@ -16,6 +16,7 @@ public static class SettingKeys
     public const string CocTimeoutSeconds = "Coc:TimeoutSeconds"; // int
     public const string RateLimitCocPerMinute = "RateLimit:CocPerMinute"; // int (aplica al reiniciar)
     public const string CorsOrigins = "Cors:Origins";        // csv (aplica al reiniciar)
+    public const string EventsConfig = "Events:Config";      // JSON de los eventos globales
 
     /// <summary>Claves cuyo valor se guarda cifrado y se enmascara al leerlo.</summary>
     public static readonly IReadOnlySet<string> Secrets = new HashSet<string>(StringComparer.Ordinal) { CocToken };
