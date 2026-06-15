@@ -122,14 +122,18 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Aplica las migraciones pendientes al arrancar (cómodo en dev; en producción
-// conviene ejecutarlas como paso del despliegue). Los tests lo desactivan
-// («Database:Migrate» = false) porque crean el esquema con otro proveedor.
-if (builder.Configuration.GetValue("Database:Migrate", true))
+// Arranque: aplica las migraciones SOLO cuando «Database:Migrate» está activo
+// (cómodo en dev; en producción conviene ejecutarlas como paso del despliegue).
+// Los tests lo desactivan y crean el esquema con EnsureCreated. La siembra de
+// roles y de la configuración por defecto se ejecuta SIEMPRE: no puede depender
+// de la migración, porque el registro de usuarios asigna el rol «Usuario» y
+// fallaría (también en los tests) si el rol no existiera.
 {
     using var scope = app.Services.CreateScope();
     var sp = scope.ServiceProvider;
-    await sp.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+
+    if (builder.Configuration.GetValue("Database:Migrate", true))
+        await sp.GetRequiredService<AppDbContext>().Database.MigrateAsync();
 
     // Siembra los roles (Admin/Técnico/Usuario) si faltan.
     var roleMgr = sp.GetRequiredService<RoleManager<IdentityRole>>();
