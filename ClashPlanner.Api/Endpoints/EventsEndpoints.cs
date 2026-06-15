@@ -20,7 +20,7 @@ public static class EventsEndpoints
     /// <summary>Serialización camelCase, coherente con el cliente TS.</summary>
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private static readonly HashSet<string> ValidTargets = new(StringComparer.Ordinal) { "time", "cost" };
+    private static readonly HashSet<string> ValidTargets = new(StringComparer.Ordinal) { "time", "cost", "both" };
 
     public static void MapEventsEndpoints(this IEndpointRouteBuilder app)
     {
