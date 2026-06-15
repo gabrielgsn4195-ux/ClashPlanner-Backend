@@ -27,6 +27,25 @@ var conn = builder.Configuration.GetConnectionString("DefaultConnection")
 // arrancar antes de que SQL Server del contenedor esté listo).
 builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlServer(conn, sql => sql.EnableRetryOnFailure()));
 
+// Ajustes que se aplican AL ARRANCAR (rate-limit del proxy y orígenes CORS): se
+// leen de la tabla `Settings` si ya existe; si no (primera ejecución), se usan
+// los de config y luego se siembran. Cambiarlos requiere reiniciar el servidor.
+int cocPerMinute = builder.Configuration.GetValue("RateLimit:CocPerMinute", 30);
+var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>();
+try
+{
+    var probeOpts = new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(conn).Options;
+    using var probe = new AppDbContext(probeOpts);
+    foreach (var r in probe.Settings.AsNoTracking()
+        .Where(s => s.Key == SettingKeys.RateLimitCocPerMinute || s.Key == SettingKeys.CorsOrigins).ToList())
+    {
+        if (r.Key == SettingKeys.RateLimitCocPerMinute && int.TryParse(r.Value, out var n)) cocPerMinute = n;
+        else if (r.Key == SettingKeys.CorsOrigins && !string.IsNullOrWhiteSpace(r.Value))
+            corsOrigins = r.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+}
+catch { /* primera ejecución: la tabla `Settings` aún no existe */ }
+
 // ── Identity (email + contraseña) ───────────────────────────────────────────
 builder.Services
     .AddIdentityCore<ApplicationUser>(o =>
@@ -34,6 +53,7 @@ builder.Services
         o.User.RequireUniqueEmail = true;
         o.Password.RequiredLength = 8;
     })
+    .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>();
 
 // ── Autenticación JWT ───────────────────────────────────────────────────────
@@ -50,7 +70,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = jwt.Issuer,
             ValidAudience = jwt.Audience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SigningKey)),
-            ClockSkew = TimeSpan.FromSeconds(30)
+            ClockSkew = TimeSpan.FromSeconds(30),
+            // El token emite los roles con el claim "role" (ver TokenService).
+            RoleClaimType = "role"
         };
     });
 builder.Services.AddAuthorization();
@@ -59,6 +81,8 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<SyncService>();
 builder.Services.AddScoped<CocService>();
+builder.Services.AddScoped<AppSettingsService>();
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 // Data Protection cifra el token de CoC en reposo. Las claves DEBEN persistir
 // entre reinicios (si no, los tokens guardados dejan de poder descifrarse): en
@@ -75,8 +99,7 @@ else if (!string.IsNullOrWhiteSpace(keysPath))
 
 // CORS: la autenticación va por cabecera Authorization (sin cookies), así que
 // permitimos cualquier origen en desarrollo. En producción, restringir a los
-// dominios de la web/app vía configuración «Cors:Origins».
-var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>();
+// dominios de la web/app vía el ajuste «Cors:Origins» (resuelto arriba).
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 {
     if (corsOrigins is { Length: > 0 }) p.WithOrigins(corsOrigins);
@@ -91,7 +114,7 @@ builder.Services.AddRateLimiter(o =>
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.AddPolicy("coc", http => RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions { Window = TimeSpan.FromMinutes(1), PermitLimit = 30, QueueLimit = 0 }));
+        _ => new FixedWindowRateLimiterOptions { Window = TimeSpan.FromMinutes(1), PermitLimit = cocPerMinute, QueueLimit = 0 }));
 });
 
 builder.Services.AddEndpointsApiExplorer();
@@ -105,7 +128,25 @@ var app = builder.Build();
 if (builder.Configuration.GetValue("Database:Migrate", true))
 {
     using var scope = app.Services.CreateScope();
-    await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+    var sp = scope.ServiceProvider;
+    await sp.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+
+    // Siembra los roles (Admin/Técnico/Usuario) si faltan.
+    var roleMgr = sp.GetRequiredService<RoleManager<IdentityRole>>();
+    foreach (var role in Roles.All)
+        if (!await roleMgr.RoleExistsAsync(role))
+            await roleMgr.CreateAsync(new IdentityRole(role));
+
+    // Siembra la configuración general por defecto (solo si la clave no existe).
+    // El token se importa del entorno/fichero actual (`Coc:Token`) la 1ª vez.
+    var settings = sp.GetRequiredService<AppSettingsService>();
+    await settings.SeedAsync(SettingKeys.CocUseProxy, "true");
+    await settings.SeedAsync(SettingKeys.CocProxyUrl, "https://cocproxy.royaleapi.dev/v1");
+    await settings.SeedAsync(SettingKeys.CocDirectUrl, "https://api.clashofclans.com/v1");
+    await settings.SeedAsync(SettingKeys.CocTimeoutSeconds, "15");
+    await settings.SeedAsync(SettingKeys.RateLimitCocPerMinute, "30");
+    await settings.SeedAsync(SettingKeys.CorsOrigins, string.Join(',', builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? []));
+    await settings.SeedAsync(SettingKeys.CocToken, builder.Configuration["Coc:Token"]);
 }
 
 if (app.Environment.IsDevelopment())
@@ -123,6 +164,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Health"
 app.MapAuthEndpoints();
 app.MapSyncEndpoints();
 app.MapCocEndpoints();
+app.MapAdminEndpoints();
 
 app.Run();
 

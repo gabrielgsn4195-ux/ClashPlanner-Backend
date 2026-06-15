@@ -16,24 +16,28 @@ public record CocResult(bool Ok, int Status, string? Json);
 /// autorizar esa IP en el token. Con `false`, se llama directo a CoC y hay que
 /// autorizar la IP pública del servidor.
 /// </summary>
-public class CocService(IHttpClientFactory httpFactory, IConfiguration config)
+public class CocService(IHttpClientFactory httpFactory, AppSettingsService settings, IConfiguration config)
 {
-    private const string Direct = "https://api.clashofclans.com/v1";
-    private const string RoyaleApiProxy = "https://cocproxy.royaleapi.dev/v1";
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
-
-    private string? Token => config["Coc:Token"];
-    private string BaseUrl => config.GetValue("Coc:UseProxy", false) ? RoyaleApiProxy : Direct;
+    private const string DefaultDirect = "https://api.clashofclans.com/v1";
+    private const string DefaultProxy = "https://cocproxy.royaleapi.dev/v1";
 
     /// <summary>
-    /// Consulta un jugador por etiqueta usando el token de servidor.
+    /// Consulta un jugador por etiqueta usando el token de servidor. El token, el
+    /// proxy on/off, las URLs y el timeout se leen de la tabla `Settings` (con
+    /// fallback a la config de arranque mientras la BD no esté sembrada).
     /// </summary>
     /// <param name="tag">Etiqueta del jugador (con o sin `#`).</param>
     public async Task<CocResult> GetPlayerAsync(string tag)
     {
-        var token = Token;
+        var token = await settings.GetStringAsync(SettingKeys.CocToken) ?? config["Coc:Token"];
         if (string.IsNullOrWhiteSpace(token))
             return new CocResult(false, 0, "{\"reason\":\"server-token-not-configured\"}");
+
+        var useProxy = await settings.GetBoolAsync(SettingKeys.CocUseProxy, config.GetValue("Coc:UseProxy", true));
+        var proxyUrl = await settings.GetStringAsync(SettingKeys.CocProxyUrl) ?? DefaultProxy;
+        var directUrl = await settings.GetStringAsync(SettingKeys.CocDirectUrl) ?? DefaultDirect;
+        var baseUrl = useProxy ? proxyUrl : directUrl;
+        var timeoutSeconds = await settings.GetIntAsync(SettingKeys.CocTimeoutSeconds, 15);
 
         // Normaliza la etiqueta y la codifica (`#` → %23). Solo se construye
         // `players/<tag-codificado>`, evitando inyección de ruta.
@@ -41,8 +45,8 @@ public class CocService(IHttpClientFactory httpFactory, IConfiguration config)
         var encoded = Uri.EscapeDataString("#" + normalized);
 
         using var http = httpFactory.CreateClient();
-        http.Timeout = Timeout;
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"{BaseUrl}/players/{encoded}");
+        http.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/players/{encoded}");
         req.Headers.Add("Authorization", $"Bearer {token}");
         req.Headers.Add("Accept", "application/json");
         try

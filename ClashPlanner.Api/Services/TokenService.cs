@@ -24,16 +24,19 @@ public class TokenService(IOptions<JwtSettings> settings)
     /// <summary>
     /// Crea un access token JWT con el id (sub) y el email del usuario.
     /// </summary>
-    public string CreateAccessToken(ApplicationUser user)
+    public string CreateAccessToken(ApplicationUser user, IEnumerable<string>? roles = null)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_s.SigningKey));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new(JwtRegisteredClaimNames.Sub, user.Id),
+            new(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
+        // El claim de rol se valida con RoleClaimType = "role" (ver Program.cs).
+        if (roles is not null)
+            claims.AddRange(roles.Select(r => new Claim("role", r)));
         var token = new JwtSecurityToken(
             issuer: _s.Issuer,
             audience: _s.Audience,

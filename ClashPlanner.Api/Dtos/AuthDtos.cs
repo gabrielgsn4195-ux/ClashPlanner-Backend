@@ -38,4 +38,6 @@ public class AuthResponse
     public string RefreshToken { get; set; } = string.Empty;
     public int ExpiresInSeconds { get; set; }
     public string Email { get; set; } = string.Empty;
+    /// <summary>Roles del usuario (Admin/Tecnico/Usuario) para el gating de la UI.</summary>
+    public string[] Roles { get; set; } = [];
 }

@@ -26,7 +26,9 @@ public static class AuthEndpoints
             var result = await users.CreateAsync(user, req.Password);
             if (!result.Succeeded)
                 return Results.ValidationProblem(result.Errors.ToDictionary(e => e.Code, e => new[] { e.Description }));
-            return Results.Ok(await IssueAsync(user, tokens, db));
+            // Todo registro nuevo entra como «Usuario»; Admin/Técnico se asignan aparte.
+            await users.AddToRoleAsync(user, Roles.Usuario);
+            return Results.Ok(await IssueAsync(user, tokens, db, users));
         });
 
         // Inicio de sesión: valida credenciales y emite tokens.
@@ -36,7 +38,7 @@ public static class AuthEndpoints
             var user = await users.FindByEmailAsync(req.Email);
             if (user is null || !await users.CheckPasswordAsync(user, req.Password))
                 return Results.Unauthorized();
-            return Results.Ok(await IssueAsync(user, tokens, db));
+            return Results.Ok(await IssueAsync(user, tokens, db, users));
         });
 
         // Refresco: rota el refresh token (revoca el usado, emite uno nuevo).
@@ -48,7 +50,7 @@ public static class AuthEndpoints
             stored.RevokedAt = DateTime.UtcNow;
             var user = await users.FindByIdAsync(stored.UserId);
             if (user is null) return Results.Unauthorized();
-            return Results.Ok(await IssueAsync(user, tokens, db));
+            return Results.Ok(await IssueAsync(user, tokens, db, users));
         });
 
         // Cierre de sesión: revoca el refresh token indicado.
@@ -63,24 +65,31 @@ public static class AuthEndpoints
             return Results.NoContent();
         });
 
-        // Datos del usuario autenticado (sonda de sesión).
+        // Datos del usuario autenticado (sonda de sesión): email + roles.
         g.MapGet("/me", (ClaimsPrincipal user) =>
-            Results.Ok(new { email = user.FindFirstValue(ClaimTypes.Email) ?? user.FindFirstValue("email") }))
+            Results.Ok(new
+            {
+                email = user.FindFirstValue(ClaimTypes.Email) ?? user.FindFirstValue("email"),
+                roles = user.FindAll("role").Select(c => c.Value).ToArray()
+            }))
             .RequireAuthorization();
     }
 
-    /// <summary>Emite access + refresh token y persiste el refresh token.</summary>
-    private static async Task<AuthResponse> IssueAsync(ApplicationUser user, TokenService tokens, AppDbContext db)
+    /// <summary>Emite access + refresh token (con roles) y persiste el refresh token.</summary>
+    private static async Task<AuthResponse> IssueAsync(
+        ApplicationUser user, TokenService tokens, AppDbContext db, UserManager<ApplicationUser> users)
     {
+        var roles = await users.GetRolesAsync(user);
         var refresh = tokens.CreateRefreshToken(user.Id);
         db.RefreshTokens.Add(refresh);
         await db.SaveChangesAsync();
         return new AuthResponse
         {
-            AccessToken = tokens.CreateAccessToken(user),
+            AccessToken = tokens.CreateAccessToken(user, roles),
             RefreshToken = refresh.Token,
             ExpiresInSeconds = tokens.AccessTokenSeconds,
-            Email = user.Email ?? string.Empty
+            Email = user.Email ?? string.Empty,
+            Roles = roles.ToArray()
         };
     }
 }
