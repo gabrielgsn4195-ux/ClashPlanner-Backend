@@ -29,7 +29,12 @@ public class SyncService(AppDbContext db)
     {
         var data = await ReadSnapshotAsync(userId);
         var revision = await GetRevisionAsync(userId);
-        return new SyncResponse { Revision = revision, Data = data };
+        return new SyncResponse
+        {
+            Revision = revision,
+            Data = data,
+            ServerTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+        };
     }
 
     /// <summary>

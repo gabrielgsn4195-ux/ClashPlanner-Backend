@@ -159,4 +159,7 @@ public class SyncResponse
     public long Revision { get; set; }
     public bool Conflict { get; set; }
     public SyncDataDto? Data { get; set; }
+    /// <summary>Hora UTC del servidor (epoch ms) al responder, para que el cliente
+    /// calibre el offset de su reloj (sellos `modifiedAt` en la línea del servidor).</summary>
+    public long ServerTime { get; set; }
 }

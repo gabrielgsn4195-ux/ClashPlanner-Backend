@@ -76,6 +76,17 @@ public class SyncTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Pull_devuelve_serverTime_para_calibrar_el_reloj()
+    {
+        var client = await RegisterAndAuthAsync();
+        var before = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var pull = await (await client.GetAsync("/sync")).Content.ReadFromJsonAsync<JsonElement>();
+        var after = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var serverTime = pull.GetProperty("serverTime").GetInt64();
+        Assert.InRange(serverTime, before, after);
+    }
+
+    [Fact]
     public async Task Push_luego_pull_devuelve_los_datos_y_sube_la_revision()
     {
         var client = await RegisterAndAuthAsync();
