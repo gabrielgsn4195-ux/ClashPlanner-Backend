@@ -36,4 +36,26 @@ public class CocTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var res = await client.GetAsync("/coc/player?tag=");
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
     }
+
+    [Theory]
+    [InlineData("/coc/clan")]
+    [InlineData("/coc/clan/currentwar")]
+    [InlineData("/coc/clan/warlog")]
+    [InlineData("/coc/clan/capitalraids")]
+    public async Task Los_endpoints_de_clan_son_publicos_y_sin_token_responden_502(string path)
+    {
+        var client = factory.CreateClient();
+        var res = await client.GetAsync($"{path}?tag=%23ABC123");
+        Assert.NotEqual(HttpStatusCode.Unauthorized, res.StatusCode);
+        Assert.Equal(HttpStatusCode.BadGateway, res.StatusCode);
+        Assert.Contains("server-token-not-configured", await res.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Consultar_clan_sin_tag_devuelve_400()
+    {
+        var client = factory.CreateClient();
+        var res = await client.GetAsync("/coc/clan?tag=");
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+    }
 }

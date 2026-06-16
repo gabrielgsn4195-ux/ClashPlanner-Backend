@@ -21,13 +21,32 @@ public class CocService(IHttpClientFactory httpFactory, AppSettingsService setti
     private const string DefaultDirect = "https://api.clashofclans.com/v1";
     private const string DefaultProxy = "https://cocproxy.royaleapi.dev/v1";
 
+    /// <summary>Codifica una etiqueta de CoC (`#ABC` → `%23ABC`), normalizándola.</summary>
+    private static string EncodeTag(string tag) => Uri.EscapeDataString("#" + tag.Trim().TrimStart('#'));
+
+    /// <summary>Consulta un jugador por etiqueta. <see cref="FetchAsync"/>.</summary>
+    public Task<CocResult> GetPlayerAsync(string tag) => FetchAsync($"players/{EncodeTag(tag)}");
+
+    /// <summary>Información del clan por etiqueta.</summary>
+    public Task<CocResult> GetClanAsync(string tag) => FetchAsync($"clans/{EncodeTag(tag)}");
+
+    /// <summary>Guerra actual del clan (404/403 si no hay o el registro es privado).</summary>
+    public Task<CocResult> GetCurrentWarAsync(string tag) => FetchAsync($"clans/{EncodeTag(tag)}/currentwar");
+
+    /// <summary>Registro de guerras del clan (si es público).</summary>
+    public Task<CocResult> GetWarLogAsync(string tag) => FetchAsync($"clans/{EncodeTag(tag)}/warlog");
+
+    /// <summary>Temporadas de asalto de la Capital del clan.</summary>
+    public Task<CocResult> GetCapitalRaidsAsync(string tag) => FetchAsync($"clans/{EncodeTag(tag)}/capitalraidseasons");
+
     /// <summary>
-    /// Consulta un jugador por etiqueta usando el token de servidor. El token, el
-    /// proxy on/off, las URLs y el timeout se leen de la tabla `Settings` (con
-    /// fallback a la config de arranque mientras la BD no esté sembrada).
+    /// Hace un GET autenticado a un recurso de la API de CoC usando el token de
+    /// servidor. El token, el proxy on/off, las URLs y el timeout se leen de la tabla
+    /// `Settings` (con fallback a la config de arranque mientras la BD no esté sembrada).
+    /// `path` es un recurso ya codificado (p. ej. `players/%23ABC`), construido en este
+    /// servicio para evitar inyección de ruta.
     /// </summary>
-    /// <param name="tag">Etiqueta del jugador (con o sin `#`).</param>
-    public async Task<CocResult> GetPlayerAsync(string tag)
+    private async Task<CocResult> FetchAsync(string path)
     {
         var token = await settings.GetStringAsync(SettingKeys.CocToken) ?? config["Coc:Token"];
         if (string.IsNullOrWhiteSpace(token))
@@ -39,14 +58,9 @@ public class CocService(IHttpClientFactory httpFactory, AppSettingsService setti
         var baseUrl = useProxy ? proxyUrl : directUrl;
         var timeoutSeconds = await settings.GetIntAsync(SettingKeys.CocTimeoutSeconds, 15);
 
-        // Normaliza la etiqueta y la codifica (`#` → %23). Solo se construye
-        // `players/<tag-codificado>`, evitando inyección de ruta.
-        var normalized = tag.Trim().TrimStart('#');
-        var encoded = Uri.EscapeDataString("#" + normalized);
-
         using var http = httpFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/players/{encoded}");
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/{path}");
         req.Headers.Add("Authorization", $"Bearer {token}");
         req.Headers.Add("Accept", "application/json");
         try
