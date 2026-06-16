@@ -19,6 +19,9 @@ public static class CocEndpoints
         g.MapGet("/clan/currentwar", (string tag, CocService coc) => Forward(tag, coc.GetCurrentWarAsync));
         g.MapGet("/clan/warlog", (string tag, CocService coc) => Forward(tag, coc.GetWarLogAsync));
         g.MapGet("/clan/capitalraids", (string tag, CocService coc) => Forward(tag, coc.GetCapitalRaidsAsync));
+        // Liga de Guerras de Clanes (CWL): grupo por etiqueta de clan, guerra por etiqueta de guerra.
+        g.MapGet("/clan/leaguegroup", (string tag, CocService coc) => Forward(tag, coc.GetLeagueGroupAsync));
+        g.MapGet("/clanwar", (string warTag, CocService coc) => Forward(warTag, coc.GetCwlWarAsync));
     }
 
     /// <summary>Llama al proxy con la etiqueta y reenvía cuerpo y estado tal cual.</summary>

@@ -58,4 +58,22 @@ public class CocTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var res = await client.GetAsync("/coc/clan?tag=");
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
     }
+
+    [Fact]
+    public async Task Endpoints_de_cwl_publicos_y_sin_token_responden_502()
+    {
+        var client = factory.CreateClient();
+        var group = await client.GetAsync("/coc/clan/leaguegroup?tag=%23ABC123");
+        Assert.Equal(HttpStatusCode.BadGateway, group.StatusCode);
+        var war = await client.GetAsync("/coc/clanwar?warTag=%23WAR123");
+        Assert.Equal(HttpStatusCode.BadGateway, war.StatusCode);
+    }
+
+    [Fact]
+    public async Task Consultar_cwl_war_sin_warTag_devuelve_400()
+    {
+        var client = factory.CreateClient();
+        var res = await client.GetAsync("/coc/clanwar?warTag=");
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+    }
 }

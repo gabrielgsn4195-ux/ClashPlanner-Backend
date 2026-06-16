@@ -39,6 +39,12 @@ public class CocService(IHttpClientFactory httpFactory, AppSettingsService setti
     /// <summary>Temporadas de asalto de la Capital del clan.</summary>
     public Task<CocResult> GetCapitalRaidsAsync(string tag) => FetchAsync($"clans/{EncodeTag(tag)}/capitalraidseasons");
 
+    /// <summary>Grupo de la Liga de Guerras de Clanes (CWL) de la temporada actual.</summary>
+    public Task<CocResult> GetLeagueGroupAsync(string tag) => FetchAsync($"clans/{EncodeTag(tag)}/currentwar/leaguegroup");
+
+    /// <summary>Una guerra de CWL por su etiqueta de guerra (`warTag`).</summary>
+    public Task<CocResult> GetCwlWarAsync(string warTag) => FetchAsync($"clanwarleagues/wars/{EncodeTag(warTag)}");
+
     /// <summary>
     /// Hace un GET autenticado a un recurso de la API de CoC usando el token de
     /// servidor. El token, el proxy on/off, las URLs y el timeout se leen de la tabla
