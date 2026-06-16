@@ -19,3 +19,6 @@
 
 # Token de CoC local (NUNCA subir)
 coc_token.txt
+
+# Documentos sueltos
+*.docx
