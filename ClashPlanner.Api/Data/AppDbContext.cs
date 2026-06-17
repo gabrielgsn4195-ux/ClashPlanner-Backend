@@ -28,7 +28,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<OverrideEntity> Overrides => Set<OverrideEntity>();
     public DbSet<UserSyncState> UserSyncStates => Set<UserSyncState>();
     public DbSet<DeletionEntity> Deletions => Set<DeletionEntity>();
-    public DbSet<CocTokenEntity> CocTokens => Set<CocTokenEntity>();
     public DbSet<AppSetting> Settings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -74,7 +73,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             e.HasKey(x => new { x.UserId, x.Kind, x.EntityId });
             e.HasIndex(x => x.UserId);
         });
-        b.Entity<CocTokenEntity>(e => e.HasKey(x => x.UserId));
         b.Entity<RefreshToken>(e => e.HasIndex(x => x.Token).IsUnique());
         // Configuración general de la app (clave/valor). Separada de los datos de
         // usuario y de los «valores de mejora» (catálogo).
