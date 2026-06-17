@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace ClashPlanner.Api.Data;
 
@@ -81,5 +82,45 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             e.ToTable("Settings");
             e.HasKey(x => x.Key);
         });
+
+        // System-versioning (Tablas Temporales) en 15 tablas: historial en el esquema
+        // `history.<Tabla>` con columnas de periodo ValidFrom/ValidTo. Provisionado en la
+        // BD fuera de banda (script SQL); aquí se declara para que el modelo de EF coincida
+        // y las migraciones futuras sepan desactivar/reactivar el versionado al alterarlas.
+        //
+        // SOLO para SQL Server: el versionado no existe en SQLite, que es el proveedor de
+        // los tests de integración (EnsureCreated en memoria). Sin este guard, las pruebas
+        // romperían. Excluidas a propósito: Settings, Roles, DataProtectionKeys y la propia
+        // __EFMigrationsHistory.
+        if (Database.IsSqlServer())
+        {
+            // Recibe el EntityTypeBuilder NO genérico para evitar la ambigüedad entre las
+            // sobrecargas genérica/no genérica de ToTable(name, Action<TableBuilder>).
+            void Temporal(EntityTypeBuilder e, string table) => e.ToTable(table, t => t.IsTemporal(tt =>
+            {
+                tt.UseHistoryTable(table, "history");
+                tt.HasPeriodStart("ValidFrom");
+                tt.HasPeriodEnd("ValidTo");
+            }));
+
+            // Sync/negocio (9).
+            Temporal(b.Entity<AccountEntity>(), "Villages");
+            Temporal(b.Entity<JobEntity>(), "Jobs");
+            Temporal(b.Entity<BoostEntity>(), "Boosts");
+            Temporal(b.Entity<HelperStateEntity>(), "HelperStates");
+            Temporal(b.Entity<PlanEntity>(), "Plans");
+            Temporal(b.Entity<OverrideEntity>(), "Overrides");
+            Temporal(b.Entity<UserSyncState>(), "UserSyncStates");
+            Temporal(b.Entity<DeletionEntity>(), "Deletions");
+            Temporal(b.Entity<RefreshToken>(), "RefreshTokens");
+
+            // Identity (6) — Roles queda excluida a propósito.
+            Temporal(b.Entity<ApplicationUser>(), "Users");
+            Temporal(b.Entity<IdentityUserRole<string>>(), "UserRoles");
+            Temporal(b.Entity<IdentityUserClaim<string>>(), "UserClaims");
+            Temporal(b.Entity<IdentityUserLogin<string>>(), "UserLogins");
+            Temporal(b.Entity<IdentityRoleClaim<string>>(), "RoleClaims");
+            Temporal(b.Entity<IdentityUserToken<string>>(), "UserTokens");
+        }
     }
 }
