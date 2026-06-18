@@ -59,6 +59,18 @@ public class CocTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/coc/player?tag=bad!tag")] // carácter no alfanumérico
+    [InlineData("/coc/player?tag=%23..%2Fetc")] // intento de path traversal
+    [InlineData("/coc/clan?tag=%23AB")] // demasiado corta (<3)
+    public async Task Tag_con_formato_invalido_devuelve_400(string url)
+    {
+        var client = factory.CreateClient();
+        var res = await client.GetAsync(url);
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Contains("invalid-tag", await res.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     public async Task Endpoints_de_cwl_publicos_y_sin_token_responden_502()
     {

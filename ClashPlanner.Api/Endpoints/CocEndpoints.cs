@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using ClashPlanner.Api.Services;
 
 namespace ClashPlanner.Api.Endpoints;
@@ -24,10 +25,20 @@ public static class CocEndpoints
         g.MapGet("/clanwar", (string warTag, CocService coc) => Forward(warTag, coc.GetCwlWarAsync));
     }
 
+    /// <summary>
+    /// Formato válido de etiqueta de CoC: 3-15 caracteres alfanuméricos (con o sin `#`).
+    /// No fuerza el alfabeto exacto de Supercell (la propia API rechaza etiquetas
+    /// inexistentes con 404); el objetivo es descartar entradas con caracteres de
+    /// inyección/ruta antes de construir la URL del proxy.
+    /// </summary>
+    private static readonly Regex TagPattern = new("^[A-Za-z0-9]{3,15}$", RegexOptions.Compiled);
+
     /// <summary>Llama al proxy con la etiqueta y reenvía cuerpo y estado tal cual.</summary>
     private static async Task<IResult> Forward(string tag, Func<string, Task<CocResult>> fetch)
     {
         if (string.IsNullOrWhiteSpace(tag)) return Results.BadRequest(new { reason = "missing-tag" });
+        if (!TagPattern.IsMatch(tag.Trim().TrimStart('#')))
+            return Results.BadRequest(new { reason = "invalid-tag" });
         var res = await fetch(tag);
         return Results.Content(res.Json ?? "null", "application/json", statusCode: res.Status == 0 ? 502 : res.Status);
     }
