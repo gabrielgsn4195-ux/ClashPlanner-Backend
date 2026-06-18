@@ -1,3 +1,4 @@
+using ClashPlanner.Api.Data;
 using ClashPlanner.Api.Models;
 using ClashPlanner.Api.Services;
 using Microsoft.AspNetCore.Identity;
@@ -59,12 +60,23 @@ public static class AdminEndpoints
             .RequireAuthorization(p => p.RequireRole(Roles.Admin));
 
         // ── Usuarios y roles (solo Admin) ────────────────────────────────────
-        g.MapGet("/users", async (UserManager<ApplicationUser> users) =>
+        g.MapGet("/users", async (UserManager<ApplicationUser> users, AppDbContext db) =>
         {
             var list = await users.Users.AsNoTracking().OrderBy(u => u.Email).ToListAsync();
-            var result = new List<object>(list.Count);
-            foreach (var u in list)
-                result.Add(new { id = u.Id, email = u.Email, roles = await users.GetRolesAsync(u) });
+            // Roles de TODOS los usuarios en una sola consulta (join UserRoles × Roles),
+            // en vez de un GetRolesAsync() por usuario (N+1: 1 + N consultas).
+            var roles = await (from ur in db.UserRoles
+                               join r in db.Roles on ur.RoleId equals r.Id
+                               where r.Name != null
+                               select new { ur.UserId, Role = r.Name! }).ToListAsync();
+            var rolesByUser = roles.GroupBy(x => x.UserId)
+                .ToDictionary(grp => grp.Key, grp => grp.Select(x => x.Role).ToArray());
+            var result = list.Select(u => new
+            {
+                id = u.Id,
+                email = u.Email,
+                roles = rolesByUser.TryGetValue(u.Id, out var rs) ? rs : Array.Empty<string>()
+            });
             return Results.Ok(result);
         })
             .RequireAuthorization(p => p.RequireRole(Roles.Admin));
