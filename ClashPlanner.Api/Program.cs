@@ -32,6 +32,9 @@ builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlServer(conn, sql => sql
 // los de config y luego se siembran. Cambiarlos requiere reiniciar el servidor.
 int cocPerMinute = builder.Configuration.GetValue("RateLimit:CocPerMinute", 30);
 var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>();
+// Si el probe falla, guardamos la excepción para registrarla con el logger del host
+// (que aún no existe aquí). Lo normal en la 1.ª ejecución es que la tabla no exista.
+Exception? settingsProbeError = null;
 try
 {
     var probeOpts = new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(conn).Options;
@@ -44,7 +47,7 @@ try
             corsOrigins = r.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 }
-catch { /* primera ejecución: la tabla `Settings` aún no existe */ }
+catch (Exception ex) { settingsProbeError = ex; /* normal en la 1.ª ejecución: la tabla `Settings` aún no existe */ }
 
 // Guardrail de CORS: en producción exigimos orígenes explícitos. Sin ellos caeríamos
 // en `AllowAnyOrigin()` (inseguro para una API autenticada). Fallamos rápido al arrancar,
@@ -129,6 +132,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+// Ya hay logger del host: registra (en Debug, sin ruido) el fallo del probe de Settings.
+if (settingsProbeError is not null)
+    app.Logger.LogDebug(settingsProbeError,
+        "No se pudo leer la tabla Settings al arrancar (normal en la 1.ª ejecución, antes de migrar).");
 
 // Arranque: aplica las migraciones SOLO cuando «Database:Migrate» está activo
 // (cómodo en dev; en producción conviene ejecutarlas como paso del despliegue).

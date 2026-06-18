@@ -14,7 +14,11 @@ public record CocResult(bool Ok, int Status, string? Json);
 /// autorizar esa IP en el token. Con `false`, se llama directo a CoC y hay que
 /// autorizar la IP pública del servidor.
 /// </summary>
-public class CocService(IHttpClientFactory httpFactory, AppSettingsService settings, IConfiguration config)
+public class CocService(
+    IHttpClientFactory httpFactory,
+    AppSettingsService settings,
+    IConfiguration config,
+    ILogger<CocService> logger)
 {
     private const string DefaultDirect = "https://api.clashofclans.com/v1";
     private const string DefaultProxy = "https://cocproxy.royaleapi.dev/v1";
@@ -75,12 +79,14 @@ public class CocService(IHttpClientFactory httpFactory, AppSettingsService setti
         }
         catch (TaskCanceledException)
         {
+            logger.LogWarning("Timeout ({Seconds}s) consultando la API de CoC: {Path}", timeoutSeconds, path);
             return new CocResult(false, 0, "{\"reason\":\"timeout\"}");
         }
-        catch (Exception)
+        catch (Exception e)
         {
             // No exponemos el detalle de la excepción al cliente (podría revelar DNS,
-            // rutas internas, etc.). El detalle se dejará en logs en una mejora posterior.
+            // rutas internas, etc.): va solo al log del servidor.
+            logger.LogWarning(e, "Error de red consultando la API de CoC: {Path}", path);
             return new CocResult(false, 0, "{\"reason\":\"network\"}");
         }
     }

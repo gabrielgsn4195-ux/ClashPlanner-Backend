@@ -33,7 +33,11 @@ public record SettingView(string Key, string Value, bool IsSecret, bool IsSet, D
 /// Data Protection: en disco/BD nunca están en claro, y al listarlos se devuelven
 /// enmascarados.
 /// </summary>
-public class AppSettingsService(AppDbContext db, IDataProtectionProvider dpp, IMemoryCache cache)
+public class AppSettingsService(
+    AppDbContext db,
+    IDataProtectionProvider dpp,
+    IMemoryCache cache,
+    ILogger<AppSettingsService> logger)
 {
     private readonly IDataProtector _protector = dpp.CreateProtector("ClashPlanner.Settings.v1");
     private const string CacheKey = "appsettings:map";
@@ -53,7 +57,13 @@ public class AppSettingsService(AppDbContext db, IDataProtectionProvider dpp, IM
         if (!SettingKeys.IsSecretKey(key)) return raw;
         if (raw.Length == 0) return string.Empty;
         try { return _protector.Unprotect(raw); }
-        catch { return null; }
+        catch (Exception e)
+        {
+            // No logueamos el valor (es secreto). Suele ocurrir si cambiaron las claves
+            // de Data Protection: el secreto guardado ya no se puede descifrar.
+            logger.LogWarning(e, "No se pudo descifrar el ajuste cifrado '{Key}'. ¿Cambiaron las claves de Data Protection?", key);
+            return null;
+        }
     }
 
     public async Task<bool> GetBoolAsync(string key, bool fallback) =>

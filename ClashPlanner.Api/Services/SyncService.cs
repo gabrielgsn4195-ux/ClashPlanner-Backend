@@ -17,7 +17,7 @@ namespace ClashPlanner.Api.Services;
 /// revisión. Si no coincide, devuelve conflicto con el estado del servidor para
 /// que el cliente fusione (last-write-wins por <c>modifiedAt</c>) y reintente.</para>
 /// </summary>
-public class SyncService(AppDbContext db)
+public class SyncService(AppDbContext db, ILogger<SyncService> logger)
 {
     /// <summary>Serialización camelCase, coherente con el cliente TS.</summary>
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -50,6 +50,7 @@ public class SyncService(AppDbContext db)
         {
             // Conflicto: el servidor cambió desde la última sincronización del
             // cliente. Devolvemos el estado del servidor para que fusione.
+            logger.LogDebug("Push en conflicto para {UserId}: base {Base} != actual {Current}", userId, req.BaseRevision, current);
             var serverData = await ReadSnapshotAsync(userId);
             return new SyncResponse { Revision = current, Conflict = true, Data = serverData };
         }
@@ -93,6 +94,7 @@ public class SyncService(AppDbContext db)
             await tx.CommitAsync();
         });
 
+        logger.LogDebug("Push aplicado para {UserId}: revisión {Old} -> {New}", userId, current, newRevision);
         return new SyncResponse { Revision = newRevision };
     }
 
