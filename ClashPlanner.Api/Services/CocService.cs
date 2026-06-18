@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace ClashPlanner.Api.Services;
 
 /// <summary>Resultado de una llamada proxy a la API de Clash of Clans.</summary>
@@ -79,9 +77,11 @@ public class CocService(IHttpClientFactory httpFactory, AppSettingsService setti
         {
             return new CocResult(false, 0, "{\"reason\":\"timeout\"}");
         }
-        catch (Exception e)
+        catch (Exception)
         {
-            return new CocResult(false, 0, $"{{\"reason\":\"network\",\"message\":{JsonSerializer.Serialize(e.Message)}}}");
+            // No exponemos el detalle de la excepción al cliente (podría revelar DNS,
+            // rutas internas, etc.). El detalle se dejará en logs en una mejora posterior.
+            return new CocResult(false, 0, "{\"reason\":\"network\"}");
         }
     }
 }

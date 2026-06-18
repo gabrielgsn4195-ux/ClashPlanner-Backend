@@ -46,6 +46,14 @@ try
 }
 catch { /* primera ejecución: la tabla `Settings` aún no existe */ }
 
+// Guardrail de CORS: en producción exigimos orígenes explícitos. Sin ellos caeríamos
+// en `AllowAnyOrigin()` (inseguro para una API autenticada). Fallamos rápido al arrancar,
+// igual que con `Jwt:SigningKey`. En desarrollo/tests se permite cualquier origen.
+if (builder.Environment.IsProduction() && corsOrigins is not { Length: > 0 })
+    throw new InvalidOperationException(
+        "Falta 'Cors:Origins' en producción. Configura los dominios permitidos por variable de entorno " +
+        "(p. ej. Cors__Origins__0=https://midominio) o en la tabla Settings (clave Cors:Origins).");
+
 // ── Identity (email + contraseña) ───────────────────────────────────────────
 builder.Services
     .AddIdentityCore<ApplicationUser>(o =>
