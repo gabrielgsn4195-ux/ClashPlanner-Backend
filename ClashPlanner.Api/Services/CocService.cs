@@ -56,15 +56,34 @@ public class CocService(
     /// </summary>
     private async Task<CocResult> FetchAsync(string path)
     {
-        var token = await settings.GetStringAsync(SettingKeys.CocToken) ?? config["Coc:Token"];
-        if (string.IsNullOrWhiteSpace(token))
-            return new CocResult(false, 0, "{\"reason\":\"server-token-not-configured\"}");
+        // El token y los ajustes se leen de la VARIABLE DE ENTORNO (config) cuando está
+        // definida, para NO tocar la tabla `Settings` en el camino caliente: con Azure SQL
+        // serverless (que se pausa) leer la BD en cada `/coc` colgaría la petición mientras
+        // la BD despierta. Solo si no hay token en config se cae a la BD (token de la admin UI).
+        string? token = config["Coc:Token"];
+        bool useProxy;
+        string proxyUrl;
+        string directUrl;
+        int timeoutSeconds;
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            useProxy = config.GetValue("Coc:UseProxy", true);
+            proxyUrl = config["Coc:ProxyUrl"] ?? DefaultProxy;
+            directUrl = config["Coc:DirectUrl"] ?? DefaultDirect;
+            timeoutSeconds = config.GetValue("Coc:TimeoutSeconds", 15);
+        }
+        else
+        {
+            token = await settings.GetStringAsync(SettingKeys.CocToken);
+            if (string.IsNullOrWhiteSpace(token))
+                return new CocResult(false, 0, "{\"reason\":\"server-token-not-configured\"}");
+            useProxy = await settings.GetBoolAsync(SettingKeys.CocUseProxy, config.GetValue("Coc:UseProxy", true));
+            proxyUrl = await settings.GetStringAsync(SettingKeys.CocProxyUrl) ?? DefaultProxy;
+            directUrl = await settings.GetStringAsync(SettingKeys.CocDirectUrl) ?? DefaultDirect;
+            timeoutSeconds = await settings.GetIntAsync(SettingKeys.CocTimeoutSeconds, 15);
+        }
 
-        var useProxy = await settings.GetBoolAsync(SettingKeys.CocUseProxy, config.GetValue("Coc:UseProxy", true));
-        var proxyUrl = await settings.GetStringAsync(SettingKeys.CocProxyUrl) ?? DefaultProxy;
-        var directUrl = await settings.GetStringAsync(SettingKeys.CocDirectUrl) ?? DefaultDirect;
         var baseUrl = useProxy ? proxyUrl : directUrl;
-        var timeoutSeconds = await settings.GetIntAsync(SettingKeys.CocTimeoutSeconds, 15);
 
         using var http = httpFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
