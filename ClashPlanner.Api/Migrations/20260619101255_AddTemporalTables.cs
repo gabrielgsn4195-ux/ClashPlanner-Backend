@@ -11,6 +11,11 @@ namespace ClashPlanner.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // El esquema 'history' debe existir ANTES del SET SYSTEM_VERSIONING (SQL Server crea
+            // ahí las tablas de historial, pero no el esquema). EF no lo emite al convertir tablas
+            // existentes a temporales, así que lo aseguramos aquí.
+            migrationBuilder.EnsureSchema(name: "history");
+
             migrationBuilder.AlterTable(
                 name: "Villages")
                 .Annotation("SqlServer:IsTemporal", true)
