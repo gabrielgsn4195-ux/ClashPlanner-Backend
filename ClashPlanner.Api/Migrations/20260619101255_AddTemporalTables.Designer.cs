@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ClashPlanner.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260617113746_AddTemporalTables")]
+    [Migration("20260619101255_AddTemporalTables")]
     partial class AddTemporalTables
     {
         /// <inheritdoc />
