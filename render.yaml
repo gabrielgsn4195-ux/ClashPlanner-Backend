@@ -1,0 +1,37 @@
+# Blueprint de Render para el backend de ClashPlanner (Docker, plan free).
+# Render construye ClashPlanner.Api/Dockerfile desde el repo y expone el servicio.
+# La BD sigue siendo la Azure SQL (clashplanner-sql); su firewall debe permitir las
+# IPs de salida de Render (se añaden con az tras crear el servicio).
+#
+# Los dos secretos (ConnectionStrings__DefaultConnection y Jwt__SigningKey) van con
+# `sync: false`: NO se versionan; se introducen en el panel de Render.
+services:
+  - type: web
+    name: clashplanner-api
+    runtime: docker
+    branch: main
+    region: frankfurt # la región EU más cercana
+    plan: free
+    rootDir: ClashPlanner.Api # contexto de build (donde está el .csproj)
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Database__Migrate
+        value: "true"
+      - key: DataProtection__KeysPath
+        value: /app/keys # /app es escribible (en free es efímero; se regenera)
+      - key: Coc__UseProxy
+        value: "true"
+      - key: Jwt__Issuer
+        value: ClashPlanner
+      - key: Jwt__Audience
+        value: ClashPlanner
+      - key: Cors__Origins__0
+        value: http://localhost:5173 # origen del cliente; se ajusta después
+      - key: ConnectionStrings__DefaultConnection
+        sync: false # secreto → se pone en el panel de Render
+      - key: Jwt__SigningKey
+        sync: false # secreto → se pone en el panel de Render

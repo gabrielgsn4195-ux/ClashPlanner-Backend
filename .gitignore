@@ -6,6 +6,10 @@
 *.user
 *.suo
 
+# Artefactos de publish locales (p. ej. para despliegues manuales)
+publish/
+publish.zip
+
 # Secretos de despliegue (nunca subir)
 .env
 
