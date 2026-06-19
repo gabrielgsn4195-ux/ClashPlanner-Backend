@@ -1,0 +1,23 @@
+name: keep-alive
+
+# Mantiene despierto el servicio de Render (plan free), que se suspende tras ~15 min sin
+# tráfico. Hace ping a /health cada ~10 min. El cron de GitHub Actions puede retrasarse
+# bajo carga, así que el intervalo (10 min) deja margen frente a la ventana de 15 min.
+# Nota: GitHub deshabilita los workflows programados tras 60 días SIN commits en el repo.
+# Para algo 100% fiable, un monitor externo (cron-job.org / UptimeRobot) es mejor.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+# Solo lectura; no necesita permisos de escritura sobre el repo.
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      # --max-time 90 cubre el arranque en frío (despertar tarda ~30-60s); reintenta si falla.
+      - name: Ping /health
+        run: curl -fsS --max-time 90 --retry 3 --retry-delay 10 https://clashplanner-api.onrender.com/health
