@@ -31,6 +31,8 @@ services:
         value: ClashPlanner
       - key: Cors__Origins__0
         value: http://localhost:5173 # origen del cliente; se ajusta después
+      - key: Sync__MinClientVersion
+        value: "0.1.9" # versión mínima de cliente aceptada en /sync (gate 426). Subir ante un cambio incompatible; nunca por encima de la última release. Clientes < 0.1.9 no mandan la cabecera → pasan (fail-open).
       - key: ConnectionStrings__DefaultConnection
         sync: false # secreto → se pone en el panel de Render
       - key: Jwt__SigningKey

@@ -2,7 +2,7 @@ namespace ClashPlanner.Api.Dtos;
 
 /// <summary>
 /// DTOs de los eventos GLOBALES del juego. Reflejan el tipo <c>GameEvent</c> de
-/// <c>@clashplanner/core</c> (serialización camelCase). El servidor solo valida y
+/// <c>@clash-planner/core</c> (serialización camelCase). El servidor solo valida y
 /// persiste la lista como JSON en la tabla `Settings`; no calcula efectos ni
 /// evalúa ventanas temporales (eso lo hace cada cliente).
 /// </summary>

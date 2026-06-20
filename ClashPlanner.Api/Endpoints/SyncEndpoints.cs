@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using ClashPlanner.Api.Dtos;
 using ClashPlanner.Api.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ClashPlanner.Api.Endpoints;
 
@@ -14,6 +15,25 @@ public static class SyncEndpoints
     public static void MapSyncEndpoints(this IEndpointRouteBuilder app)
     {
         var g = app.MapGroup("/sync").WithTags("Sync").RequireAuthorization();
+
+        // Gate de versión mínima: si `Sync:MinClientVersion` está fijado y el cliente
+        // (cabecera `X-Client-Version`) es más viejo, devolvemos 426 para que pause el
+        // sync y pida actualizar. Si la cabecera falta o no se puede interpretar →
+        // fail-open (clientes antiguos que no la mandan siguen sincronizando). Solo se
+        // gatea /sync: es donde un cliente viejo podría pisar datos nuevos de otros
+        // dispositivos (la app sigue usable en local).
+        g.AddEndpointFilter(static async (ctx, next) =>
+        {
+            var cfg = ctx.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+            var min = cfg["Sync:MinClientVersion"];
+            if (!string.IsNullOrWhiteSpace(min) && Version.TryParse(min, out var minV))
+            {
+                var header = ctx.HttpContext.Request.Headers["X-Client-Version"].ToString();
+                if (Version.TryParse(header, out var clientV) && clientV < minV)
+                    return Results.Json(new { minVersion = min }, statusCode: StatusCodes.Status426UpgradeRequired);
+            }
+            return await next(ctx);
+        });
 
         // Pull: snapshot completo + revisión actual.
         g.MapGet("", async (ClaimsPrincipal user, SyncService sync) =>

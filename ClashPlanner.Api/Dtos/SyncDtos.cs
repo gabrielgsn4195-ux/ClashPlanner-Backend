@@ -2,7 +2,7 @@ namespace ClashPlanner.Api.Dtos;
 
 /// <summary>
 /// DTOs del protocolo de sincronización. Reflejan EXACTAMENTE el tipo
-/// <c>SyncData</c> de <c>@clashplanner/core</c> (serialización camelCase), de
+/// <c>SyncData</c> de <c>@clash-planner/core</c> (serialización camelCase), de
 /// modo que el cliente envía y recibe su estado sin transformaciones. Las
 /// estructuras de mapa (inventario, niveles de ayudantes, cola, overrides)
 /// conservan las claves que genera el cliente (accountId, itemId, nivel…).
