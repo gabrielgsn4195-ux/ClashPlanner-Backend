@@ -48,6 +48,12 @@ public static class SyncEndpoints
         {
             var userId = UserId(user);
             if (userId is null) return Results.Unauthorized();
+            // Tope de cardinalidad del snapshot (DoS por usuario autenticado): el tope de
+            // tamaño de cuerpo lo pone Kestrel; aquí limitamos el nº de entidades y la
+            // longitud de los campos de texto antes de tocar la BD.
+            if (SyncLimits.Validate(req.Data) is { } tooLarge)
+                return Results.Json(new { reason = "payload-too-large", detail = tooLarge },
+                    statusCode: StatusCodes.Status413PayloadTooLarge);
             var res = await sync.PushAsync(userId, req);
             return res.Conflict ? Results.Json(res, statusCode: StatusCodes.Status409Conflict) : Results.Ok(res);
         });

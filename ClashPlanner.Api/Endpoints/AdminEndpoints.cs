@@ -50,6 +50,13 @@ public static class AdminEndpoints
         {
             if (!Editable.Contains(body.Key))
                 return Results.BadRequest(new { reason = "unknown-key", key = body.Key });
+            // Las URLs base del proxy CoC deben ser HTTPS absolutas: como la petición del
+            // proxy lleva el token de servidor en la cabecera Authorization, una URL hacia
+            // una IP interna o un esquema peligroso sería un vector de SSRF / fuga del token.
+            if ((body.Key == SettingKeys.CocProxyUrl || body.Key == SettingKeys.CocDirectUrl)
+                && !string.IsNullOrWhiteSpace(body.Value)
+                && !(Uri.TryCreate(body.Value, UriKind.Absolute, out var url) && url.Scheme == Uri.UriSchemeHttps))
+                return Results.BadRequest(new { reason = "invalid-url", key = body.Key });
             await settings.SetAsync(body.Key, body.Value ?? string.Empty);
             return Results.Ok(new
             {

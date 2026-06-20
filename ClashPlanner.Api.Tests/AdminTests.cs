@@ -122,6 +122,19 @@ public class AdminTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Put_settings_url_de_proxy_no_https_devuelve_400()
+    {
+        // Anti-SSRF: las URLs base del proxy CoC deben ser HTTPS absolutas (no se puede
+        // apuntar el token de servidor a una IP interna ni a un esquema peligroso).
+        using var f = new ApiFactory();
+        var (admin, _) = await AuthAsync(f, Models.Roles.Admin);
+        var res = await admin.PutAsJsonAsync("/admin/settings",
+            new { key = SettingKeys.CocProxyUrl, value = "http://169.254.169.254/v1" });
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Contains("invalid-url", await res.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Put_settings_token_se_guarda_enmascarado_nunca_en_claro()
     {
         using var f = new ApiFactory();

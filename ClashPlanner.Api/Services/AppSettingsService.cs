@@ -18,6 +18,14 @@ public static class SettingKeys
     public const string CorsOrigins = "Cors:Origins";        // csv (aplica al reiniciar)
     public const string EventsConfig = "Events:Config";      // JSON de los eventos globales
 
+    /// <summary>URL base de la API oficial de CoC (acceso directo). Valor por defecto
+    /// de <see cref="CocDirectUrl"/> y semilla de la tabla `Settings`.</summary>
+    public const string DefaultCocDirectUrl = "https://api.clashofclans.com/v1";
+
+    /// <summary>URL base del proxy de RoyaleAPI (IP fija; útil cuando la IP del
+    /// servidor cambia). Valor por defecto de <see cref="CocProxyUrl"/> y semilla.</summary>
+    public const string DefaultCocProxyUrl = "https://cocproxy.royaleapi.dev/v1";
+
     /// <summary>Claves cuyo valor se guarda cifrado y se enmascara al leerlo.</summary>
     public static readonly IReadOnlySet<string> Secrets = new HashSet<string>(StringComparer.Ordinal) { CocToken };
 

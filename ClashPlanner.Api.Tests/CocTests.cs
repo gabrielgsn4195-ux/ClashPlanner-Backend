@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.AspNetCore.Hosting;
 
 namespace ClashPlanner.Api.Tests;
 
@@ -87,5 +88,31 @@ public class CocTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var client = factory.CreateClient();
         var res = await client.GetAsync("/coc/clanwar?warTag=");
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task BaseUrl_con_esquema_peligroso_responde_502_server_misconfigured()
+    {
+        // Defensa en profundidad SSRF (CocService): si la URL base de la API tuviera un
+        // esquema peligroso (p. ej. file://), el proxy NO debe llamar; responde 502 con
+        // reason server-misconfigured.
+        using var f = new MisconfiguredCocFactory();
+        var client = f.CreateClient();
+        var res = await client.GetAsync("/coc/player?tag=%23ABC123");
+        Assert.Equal(HttpStatusCode.BadGateway, res.StatusCode);
+        Assert.Contains("server-misconfigured", await res.Content.ReadAsStringAsync());
+    }
+
+    /// <summary>Fábrica con token de servidor presente y una URL base directa con esquema no http(s).</summary>
+    private sealed class MisconfiguredCocFactory : ApiFactory
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            // Con token en config se entra en la rama config-first (no toca BD).
+            builder.UseSetting("Coc:Token", "test-token");
+            builder.UseSetting("Coc:UseProxy", "false");
+            builder.UseSetting("Coc:DirectUrl", "file:///etc/passwd");
+        }
     }
 }

@@ -27,6 +27,12 @@ public class ApiFactory : WebApplicationFactory<Program>
         // Database:Migrate=false) en vez de appsettings.Development.json.
         builder.UseEnvironment("Testing");
 
+        // Neutraliza el rate limiter de /auth en la suite general: todas las peticiones de
+        // una factory comparten la partición IP "unknown" de TestServer, así que un límite
+        // realista (30/min) podría romper clases que hacen muchas llamadas /auth. Los tests
+        // que SÍ quieren probar el 429 usan una factory que lo baja (ver TightAuthLimitFactory).
+        builder.UseSetting("RateLimit:AuthPerMinute", "100000");
+
         builder.ConfigureServices(services =>
         {
             // Quita el DbContext y TODOS los servicios internos del proveedor SQL

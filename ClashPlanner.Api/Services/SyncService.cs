@@ -44,58 +44,91 @@ public class SyncService(AppDbContext db, ILogger<SyncService> logger)
     /// <param name="req">Snapshot a guardar y revisión base del cliente.</param>
     public async Task<SyncResponse> PushAsync(string userId, PushRequest req)
     {
-        var current = await GetRevisionAsync(userId);
-
-        if (req.BaseRevision != current)
+        // `EnableRetryOnFailure` (estrategia de reintento de SQL Server) NO admite
+        // transacciones iniciadas a mano: hay que ejecutarlas dentro de una estrategia de
+        // ejecución para que el bloque se reintente como una unidad.
+        var strategy = db.Database.CreateExecutionStrategy();
+        try
         {
-            // Conflicto: el servidor cambió desde la última sincronización del
-            // cliente. Devolvemos el estado del servidor para que fusione.
-            logger.LogDebug("Push en conflicto para {UserId}: base {Base} != actual {Current}", userId, req.BaseRevision, current);
+            return await strategy.ExecuteAsync(async () =>
+            {
+                // Si hubo un reintento, descarta lo añadido al contexto en el intento anterior
+                // (los ExecuteDelete son SQL directo y no se rastrean).
+                db.ChangeTracker.Clear();
+
+                await using var tx = await db.Database.BeginTransactionAsync();
+
+                // Lee la revisión DENTRO de la transacción, como entidad RASTREADA: la
+                // comprobación de baseRevision y el incremento se apoyan en el token de
+                // concurrencia de `Revision` (EF añade `WHERE Revision = @original` al
+                // actualizar), de modo que dos push concurrentes del mismo usuario no puedan
+                // ambos aplicarse. Con estado existente el perdedor lanza
+                // DbUpdateConcurrencyException (UPDATE); en el primerísimo push de dos
+                // dispositivos a la vez, la colisión de PK del INSERT (DbUpdateException) — ambos
+                // casos se traducen a conflicto en los catch de abajo.
+                var state = await db.UserSyncStates.FirstOrDefaultAsync(s => s.UserId == userId);
+                var current = state?.Revision ?? 0;
+
+                if (req.BaseRevision != current)
+                {
+                    // Conflicto: el servidor cambió desde la última sincronización del cliente.
+                    logger.LogDebug("Push en conflicto para {UserId}: base {Base} != actual {Current}", userId, req.BaseRevision, current);
+                    await tx.RollbackAsync();
+                    var serverData = await ReadSnapshotAsync(userId);
+                    return new SyncResponse { Revision = current, Conflict = true, Data = serverData };
+                }
+
+                var newRevision = current + 1;
+
+                // Reemplazo total del snapshot del usuario.
+                await db.Accounts.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+                await db.Jobs.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+                await db.Boosts.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+                await db.HelperStates.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+                await db.Plans.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+                await db.Overrides.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+                await db.Deletions.Where(x => x.UserId == userId).ExecuteDeleteAsync();
+
+                WriteSnapshot(userId, req.Data);
+
+                if (state is null)
+                    db.UserSyncStates.Add(new UserSyncState { UserId = userId, Revision = newRevision });
+                else
+                    state.Revision = newRevision;
+
+                await db.SaveChangesAsync();
+                await tx.CommitAsync();
+
+                logger.LogDebug("Push aplicado para {UserId}: revisión {Old} -> {New}", userId, current, newRevision);
+                return new SyncResponse { Revision = newRevision };
+            });
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            // Pérdida de la carrera por el token de concurrencia de Revision (otro push del
+            // mismo usuario ganó el UPDATE): se trata como conflicto para que el cliente fusione
+            // y reintente (la transacción ya hizo rollback).
+            logger.LogDebug(ex, "Push con conflicto de concurrencia para {UserId}", userId);
+            db.ChangeTracker.Clear();
             var serverData = await ReadSnapshotAsync(userId);
+            var current = await GetRevisionAsync(userId);
             return new SyncResponse { Revision = current, Conflict = true, Data = serverData };
         }
-
-        var newRevision = current + 1;
-
-        // `EnableRetryOnFailure` (estrategia de reintento de SQL Server) NO admite
-        // transacciones iniciadas a mano: hay que ejecutarlas dentro de una
-        // estrategia de ejecución para que el bloque se reintente como una unidad.
-        var strategy = db.Database.CreateExecutionStrategy();
-        await strategy.ExecuteAsync(async () =>
+        catch (DbUpdateException ex)
         {
-            // Si hubo un reintento, descarta lo añadido al contexto en el intento
-            // anterior (los ExecuteDelete son SQL directo y no se rastrean).
+            // Otra DbUpdateException: el caso esperado es la colisión de PK al INSERTAR el
+            // UserSyncState en dos PRIMEROS push simultáneos del mismo usuario (el token de
+            // concurrencia solo cubre UPDATE, no INSERT). Distinguimos carrera de error genuino
+            // SIN depender del proveedor: si la revisión del servidor avanzó respecto a la base
+            // del cliente, otro push ganó → conflicto recuperable; si no, es un error real
+            // (datos/BD) y propaga (500, registrado) para no enmascararlo como un 409 perpetuo.
             db.ChangeTracker.Clear();
-
-            await using var tx = await db.Database.BeginTransactionAsync();
-
-            // Reemplazo total del snapshot del usuario.
-            await db.Accounts.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-            await db.Jobs.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-            await db.Boosts.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-            await db.HelperStates.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-            await db.Plans.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-            await db.Overrides.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-            await db.Deletions.Where(x => x.UserId == userId).ExecuteDeleteAsync();
-
-            WriteSnapshot(userId, req.Data);
-
-            var state = await db.UserSyncStates.FirstOrDefaultAsync(s => s.UserId == userId);
-            if (state is null)
-            {
-                db.UserSyncStates.Add(new UserSyncState { UserId = userId, Revision = newRevision });
-            }
-            else
-            {
-                state.Revision = newRevision;
-            }
-
-            await db.SaveChangesAsync();
-            await tx.CommitAsync();
-        });
-
-        logger.LogDebug("Push aplicado para {UserId}: revisión {Old} -> {New}", userId, current, newRevision);
-        return new SyncResponse { Revision = newRevision };
+            var serverRevision = await GetRevisionAsync(userId);
+            if (serverRevision == req.BaseRevision) throw;
+            logger.LogDebug(ex, "Push con colisión de escritura para {UserId}; se trata como conflicto", userId);
+            var serverData = await ReadSnapshotAsync(userId);
+            return new SyncResponse { Revision = serverRevision, Conflict = true, Data = serverData };
+        }
     }
 
     private async Task<long> GetRevisionAsync(string userId) =>
@@ -204,7 +237,10 @@ public class SyncService(AppDbContext db, ILogger<SyncService> logger)
 
     private void WriteSnapshot(string userId, SyncDataDto data)
     {
-        foreach (var a in data.Accounts)
+        // Deduplica por id las listas con clave (UserId, Id): si el cliente enviara ids
+        // repetidos, una colisión de PK abortaría todo el push (igual que ya se hace con las
+        // lápidas más abajo). Plans/Inventory/HelperLevels vienen indexados por clave única.
+        foreach (var a in data.Accounts.GroupBy(x => x.Id).Select(g => g.First()))
         {
             db.Accounts.Add(new AccountEntity
             {
@@ -225,7 +261,7 @@ public class SyncService(AppDbContext db, ILogger<SyncService> logger)
             });
         }
 
-        foreach (var j in data.Jobs)
+        foreach (var j in data.Jobs.GroupBy(x => x.Id).Select(g => g.First()))
             db.Jobs.Add(new JobEntity
             {
                 Id = j.Id,
@@ -249,7 +285,7 @@ public class SyncService(AppDbContext db, ILogger<SyncService> logger)
                 ModifiedAt = j.ModifiedAt
             });
 
-        foreach (var b in data.Boosts)
+        foreach (var b in data.Boosts.GroupBy(x => x.Id).Select(g => g.First()))
             db.Boosts.Add(new BoostEntity
             {
                 Id = b.Id,
@@ -267,7 +303,7 @@ public class SyncService(AppDbContext db, ILogger<SyncService> logger)
                 ModifiedAt = b.ModifiedAt
             });
 
-        foreach (var h in data.HelperStates)
+        foreach (var h in data.HelperStates.GroupBy(x => x.Id).Select(g => g.First()))
             db.HelperStates.Add(new HelperStateEntity
             {
                 Id = h.Id,

@@ -20,8 +20,7 @@ public class CocService(
     IConfiguration config,
     ILogger<CocService> logger)
 {
-    private const string DefaultDirect = "https://api.clashofclans.com/v1";
-    private const string DefaultProxy = "https://cocproxy.royaleapi.dev/v1";
+    // Las URLs por defecto viven en SettingKeys (compartidas con la semilla de Program.cs).
 
     /// <summary>Codifica una etiqueta de CoC (`#ABC` → `%23ABC`), normalizándola.</summary>
     private static string EncodeTag(string tag) => Uri.EscapeDataString("#" + tag.Trim().TrimStart('#'));
@@ -68,8 +67,8 @@ public class CocService(
         if (!string.IsNullOrWhiteSpace(token))
         {
             useProxy = config.GetValue("Coc:UseProxy", true);
-            proxyUrl = config["Coc:ProxyUrl"] ?? DefaultProxy;
-            directUrl = config["Coc:DirectUrl"] ?? DefaultDirect;
+            proxyUrl = config["Coc:ProxyUrl"] ?? SettingKeys.DefaultCocProxyUrl;
+            directUrl = config["Coc:DirectUrl"] ?? SettingKeys.DefaultCocDirectUrl;
             timeoutSeconds = config.GetValue("Coc:TimeoutSeconds", 15);
         }
         else
@@ -78,12 +77,22 @@ public class CocService(
             if (string.IsNullOrWhiteSpace(token))
                 return new CocResult(false, 0, "{\"reason\":\"server-token-not-configured\"}");
             useProxy = await settings.GetBoolAsync(SettingKeys.CocUseProxy, config.GetValue("Coc:UseProxy", true));
-            proxyUrl = await settings.GetStringAsync(SettingKeys.CocProxyUrl) ?? DefaultProxy;
-            directUrl = await settings.GetStringAsync(SettingKeys.CocDirectUrl) ?? DefaultDirect;
+            proxyUrl = await settings.GetStringAsync(SettingKeys.CocProxyUrl) ?? SettingKeys.DefaultCocProxyUrl;
+            directUrl = await settings.GetStringAsync(SettingKeys.CocDirectUrl) ?? SettingKeys.DefaultCocDirectUrl;
             timeoutSeconds = await settings.GetIntAsync(SettingKeys.CocTimeoutSeconds, 15);
         }
 
         var baseUrl = useProxy ? proxyUrl : directUrl;
+
+        // Defensa en profundidad SSRF: solo http(s) absolutas. Aunque la admin UI ya valida
+        // las URLs al escribirlas, un valor manipulado (config/BD) no debe poder dirigir el
+        // token de servidor a esquemas peligrosos (file://, etc.).
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri) ||
+            (baseUri.Scheme != Uri.UriSchemeHttps && baseUri.Scheme != Uri.UriSchemeHttp))
+        {
+            logger.LogError("URL base de CoC inválida o con esquema no permitido: {BaseUrl}", baseUrl);
+            return new CocResult(false, 0, "{\"reason\":\"server-misconfigured\"}");
+        }
 
         using var http = httpFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(timeoutSeconds);

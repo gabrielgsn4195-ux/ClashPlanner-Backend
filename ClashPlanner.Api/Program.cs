@@ -1,3 +1,5 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
 using ClashPlanner.Api.Data;
@@ -6,6 +8,7 @@ using ClashPlanner.Api.Endpoints;
 using ClashPlanner.Api.Models;
 using ClashPlanner.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -31,7 +34,17 @@ builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlServer(conn, sql => sql
 // leen de la tabla `Settings` si ya existe; si no (primera ejecución), se usan
 // los de config y luego se siembran. Cambiarlos requiere reiniciar el servidor.
 int cocPerMinute = builder.Configuration.GetValue("RateLimit:CocPerMinute", 30);
+// Límite de tasa de /auth (login/registro/refresh) por IP: anti-fuerza-bruta de 2.ª
+// línea (la 1.ª es el lockout por cuenta). Solo es eficaz por-cliente con la IP real,
+// que recuperamos de X-Forwarded-For en producción (UseForwardedHeaders, más abajo).
+int authPerMinute = builder.Configuration.GetValue("RateLimit:AuthPerMinute", 30);
 var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>();
+
+// Tope del tamaño del cuerpo de las peticiones: evita que un cliente agote memoria
+// subiendo un snapshot de /sync desmesurado (la cardinalidad se valida aparte en el
+// endpoint). Configurable por si un usuario con muchas cuentas necesita más margen.
+builder.WebHost.ConfigureKestrel(o =>
+    o.Limits.MaxRequestBodySize = builder.Configuration.GetValue<long>("Limits:MaxRequestBodyBytes", 8L * 1024 * 1024));
 // Si el probe falla, guardamos la excepción para registrarla con el logger del host
 // (que aún no existe aquí). Lo normal en la 1.ª ejecución es que la tabla no exista.
 Exception? settingsProbeError = null;
@@ -58,11 +71,26 @@ if (builder.Environment.IsProduction() && corsOrigins is not { Length: > 0 })
         "(p. ej. Cors__Origins__0=https://midominio) o en la tabla Settings (clave Cors:Origins).");
 
 // ── Identity (email + contraseña) ───────────────────────────────────────────
+// DECISIÓN: no se exige confirmación de email (`RequireConfirmedEmail`/`Account`
+// quedan en false, su valor por defecto). El email es solo un identificador de
+// login: la cuenta no da acceso a nada sensible de terceros (solo sincroniza los
+// datos del propio planificador) y no hay infraestructura SMTP en el despliegue
+// (Render free). Si en el futuro se añade recuperación de contraseña por correo o
+// el alcance crece, habría que: (1) configurar un proveedor de email, (2) activar
+// `o.SignIn.RequireConfirmedEmail = true`, y (3) enviar el token de confirmación
+// tras el registro en AuthEndpoints. Hasta entonces, mantenerlo simple es deliberado.
 builder.Services
     .AddIdentityCore<ApplicationUser>(o =>
     {
         o.User.RequireUniqueEmail = true;
         o.Password.RequiredLength = 8;
+        // Bloqueo temporal de la cuenta ante intentos fallidos repetidos (anti-fuerza-bruta).
+        // El login lleva la cuenta manualmente (AccessFailed/Reset) porque usamos
+        // AddIdentityCore sin SignInManager.
+        o.Lockout.AllowedForNewUsers = true;
+        o.Lockout.MaxFailedAccessAttempts = builder.Configuration.GetValue("Identity:MaxFailedAccessAttempts", 5);
+        o.Lockout.DefaultLockoutTimeSpan =
+            TimeSpan.FromMinutes(builder.Configuration.GetValue("Identity:LockoutMinutes", 15));
     })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>();
@@ -85,6 +113,28 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             // El token emite los roles con el claim "role" (ver TokenService).
             RoleClaimType = "role"
         };
+        // Rechaza access tokens revocados (logout / logout-all): comprobación EN MEMORIA, sin
+        // tocar la BD en cada petición.
+        o.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = ctx =>
+            {
+                var principal = ctx.Principal;
+                if (principal is not null)
+                {
+                    var rev = ctx.HttpContext.RequestServices.GetRequiredService<TokenRevocationService>();
+                    var jti = principal.FindFirstValue(JwtRegisteredClaimNames.Jti);
+                    var sub = principal.FindFirstValue(JwtRegisteredClaimNames.Sub);
+                    var iat = principal.FindFirstValue(JwtRegisteredClaimNames.Iat);
+                    // Sin iat (no debería faltar): trátalo como muy antiguo → fail-closed ante epoch.
+                    var issuedAt = iat is not null && long.TryParse(iat, out var unix)
+                        ? DateTimeOffset.FromUnixTimeSeconds(unix)
+                        : DateTimeOffset.MinValue;
+                    if (rev.IsRevoked(jti, sub, issuedAt)) ctx.Fail("Token revocado.");
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 builder.Services.AddAuthorization();
 
@@ -93,7 +143,11 @@ builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<SyncService>();
 builder.Services.AddScoped<CocService>();
 builder.Services.AddScoped<AppSettingsService>();
+// Purga periódica de refresh tokens muertos (en segundo plano).
+builder.Services.AddHostedService<RefreshTokenCleanupService>();
 builder.Services.AddMemoryCache();
+// Revocación de access tokens en memoria (logout / logout-all) sin tocar la BD por petición.
+builder.Services.AddSingleton<TokenRevocationService>();
 builder.Services.AddHttpClient();
 // Data Protection cifra el token de CoC en reposo. Las claves DEBEN persistir
 // entre reinicios (si no, los tokens guardados dejan de poder descifrarse): en
@@ -126,10 +180,16 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("coc", http => RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { Window = TimeSpan.FromMinutes(1), PermitLimit = cocPerMinute, QueueLimit = 0 }));
+    // Límite por IP de los endpoints de autenticación (login/registro/refresh).
+    o.AddPolicy("auth", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { Window = TimeSpan.FromMinutes(1), PermitLimit = authPerMinute, QueueLimit = 0 }));
 });
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+// Respuestas de error uniformes (ProblemDetails) para el manejador global de excepciones.
+builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
@@ -161,15 +221,57 @@ if (settingsProbeError is not null)
     // El token se importa del entorno/fichero actual (`Coc:Token`) la 1ª vez.
     var settings = sp.GetRequiredService<AppSettingsService>();
     await settings.SeedAsync(SettingKeys.CocUseProxy, "true");
-    await settings.SeedAsync(SettingKeys.CocProxyUrl, "https://cocproxy.royaleapi.dev/v1");
-    await settings.SeedAsync(SettingKeys.CocDirectUrl, "https://api.clashofclans.com/v1");
+    await settings.SeedAsync(SettingKeys.CocProxyUrl, SettingKeys.DefaultCocProxyUrl);
+    await settings.SeedAsync(SettingKeys.CocDirectUrl, SettingKeys.DefaultCocDirectUrl);
     await settings.SeedAsync(SettingKeys.CocTimeoutSeconds, "15");
     await settings.SeedAsync(SettingKeys.RateLimitCocPerMinute, "30");
     await settings.SeedAsync(SettingKeys.CorsOrigins, string.Join(',', builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? []));
     await settings.SeedAsync(SettingKeys.CocToken, builder.Configuration["Coc:Token"]);
 }
 
-if (app.Environment.IsDevelopment())
+// ── Pipeline HTTP ────────────────────────────────────────────────────────────
+// Cabeceras de seguridad para TODAS las respuestas. Se fijan vía Response.OnStarting
+// (no inline) para que SOBREVIVAN al Response.Clear() del manejador global de
+// excepciones y se emitan también en las respuestas de error (500). Este middleware
+// va el PRIMERO, aguas arriba del exception handler. HSTS solo sobre HTTPS y fuera de
+// Development (el TLS lo termina el proxy; el esquema real llega por X-Forwarded-Proto,
+// resuelto por UseForwardedHeaders, que corre antes de que dispare este callback).
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.OnStarting(() =>
+    {
+        var h = ctx.Response.Headers;
+        h["X-Content-Type-Options"] = "nosniff";
+        h["X-Frame-Options"] = "DENY";
+        h["Referrer-Policy"] = "no-referrer";
+        if (!app.Environment.IsDevelopment() && ctx.Request.IsHttps)
+            h["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+        return Task.CompletedTask;
+    });
+    await next();
+});
+
+// Fuera de desarrollo (Producción y Testing) endurecemos el pipeline. En Development
+// se conserva la página de error detallada del host y Swagger.
+if (!app.Environment.IsDevelopment())
+{
+    // Detrás del proxy de Render (que termina TLS) recuperamos esquema/IP reales del
+    // cliente desde X-Forwarded-*. Sin esto, el rate limiter por IP agruparía TODO el
+    // tráfico bajo la IP del proxy y el esquema HTTPS no se detectaría. El proxy no tiene
+    // IP fija conocida → aceptamos las cabeceras de cualquier origen ascendente.
+    var fwd = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+    };
+    fwd.KnownIPNetworks.Clear();
+    fwd.KnownProxies.Clear();
+    app.UseForwardedHeaders(fwd);
+
+    // Manejador global de excepciones: respuesta ProblemDetails uniforme, SIN filtrar
+    // trazas internas al cliente.
+    app.UseExceptionHandler();
+}
+else
 {
     app.UseSwagger();
     app.UseSwaggerUI();

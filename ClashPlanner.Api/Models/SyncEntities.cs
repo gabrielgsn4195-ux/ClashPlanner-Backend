@@ -129,5 +129,12 @@ public class DeletionEntity
 public class UserSyncState
 {
     [Required] public string UserId { get; set; } = string.Empty;
+    /// <summary>
+    /// Contador de revisión. Es token de concurrencia (<see cref="ConcurrencyCheckAttribute"/>):
+    /// EF añade `WHERE Revision = @original` al actualizar, de modo que dos push concurrentes
+    /// del mismo usuario no puedan ambos pasar (el 2.º falla con DbUpdateConcurrencyException
+    /// y se trata como conflicto), evitando la pérdida de datos.
+    /// </summary>
+    [ConcurrencyCheck]
     public long Revision { get; set; }
 }

@@ -113,10 +113,10 @@ docker compose up -d --build
 
 ## Endpoints
 
-- **Auth:** `POST /auth/register` · `POST /auth/login` · `POST /auth/refresh` · `POST /auth/logout` · `GET /auth/me`
+- **Auth:** `POST /auth/register` · `POST /auth/login` · `POST /auth/refresh` · `POST /auth/logout` · `POST /auth/logout-all` (cierra todas las sesiones; requiere sesión) · `GET /auth/me`. Refresh tokens rotatorios por familia: caducidad por inactividad + deadline absoluto; el reuso de un token rotado revoca toda la familia.
 - **Sync:** `GET /sync` (pull) · `POST /sync` (push con `baseRevision`; `409` en conflicto)
-- **CoC:** `GET /coc/token` (estado + IP del servidor) · `PUT`/`DELETE /coc/token` · `GET /coc/player?tag=…`
-- **Admin:** gestión de la tabla `Settings` (roles `Admin`/`Técnico`)
+- **CoC (proxy público, con rate limit por IP):** `GET /coc/player?tag=…` · `GET /coc/clan?tag=…` · `GET /coc/clan/currentwar?tag=…` · `GET /coc/clan/warlog?tag=…` · `GET /coc/clan/capitalraids?tag=…` · `GET /coc/clan/leaguegroup?tag=…` · `GET /coc/clanwar?warTag=…`. El token de servidor se gestiona en `/admin/settings` (no hay endpoints `/coc/token`).
+- **Admin:** gestión de la tabla `Settings` (leer: `Admin`/`Técnico`; editar: solo `Admin`) y de usuarios/roles (solo `Admin`)
 - **Salud:** `GET /health`
 
 ## Roles

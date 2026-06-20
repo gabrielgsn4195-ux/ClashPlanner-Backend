@@ -158,6 +158,34 @@ public class SyncTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Push_con_ids_duplicados_se_deduplica_y_no_falla()
+    {
+        var client = await RegisterAndAuthAsync();
+        var data = new
+        {
+            accounts = new[]
+            {
+                new { id = "dup", name = "A", color = "#fff", thLevel = 1, builders = 1, bhLevel = 0, bbBuilders = 0, goldPass = 0, modifiedAt = 1L },
+                new { id = "dup", name = "B", color = "#fff", thLevel = 2, builders = 1, bhLevel = 0, bbBuilders = 0, goldPass = 0, modifiedAt = 2L }
+            },
+            jobs = Array.Empty<object>(),
+            boosts = Array.Empty<object>(),
+            helperStates = Array.Empty<object>(),
+            helperLevels = new { },
+            inventory = new { },
+            plans = new { },
+            overrides = new { }
+        };
+
+        // Sin deduplicación, los dos ids iguales colisionarían en la PK y abortarían el push.
+        var push = await client.PostAsJsonAsync("/sync", new { baseRevision = 0, data });
+        push.EnsureSuccessStatusCode();
+
+        var pull = await (await client.GetAsync("/sync")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Single(pull.GetProperty("data").GetProperty("accounts").EnumerateArray());
+    }
+
+    [Fact]
     public async Task Refresh_rota_el_token_y_el_anterior_deja_de_valer()
     {
         var client = factory.CreateClient();
