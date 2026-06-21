@@ -161,4 +161,31 @@ public class EventsTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.DoesNotContain("onerror", msg, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("<img", msg, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task Put_events_con_demasiados_efectos_devuelve_400()
+    {
+        using var f = new ApiFactory();
+        var staff = await AuthAsync(f, Roles.Tecnico);
+        var effects = Enumerable.Range(0, 51).Select(_ => new { target = "cost", percent = 1.0 }).ToArray();
+        var events = new object[]
+        {
+            new { id = "e1", name = "x", enabled = true, goblinBuilder = false, effects }
+        };
+        var put = await staff.PutAsJsonAsync("/events", events);
+        Assert.Equal(HttpStatusCode.BadRequest, put.StatusCode);
+    }
+
+    [Fact]
+    public async Task Put_events_con_texto_demasiado_largo_devuelve_400()
+    {
+        using var f = new ApiFactory();
+        var staff = await AuthAsync(f, Roles.Tecnico);
+        var events = new object[]
+        {
+            new { id = "e1", name = new string('x', 4001), enabled = true, goblinBuilder = false, effects = Array.Empty<object>() }
+        };
+        var put = await staff.PutAsJsonAsync("/events", events);
+        Assert.Equal(HttpStatusCode.BadRequest, put.StatusCode);
+    }
 }

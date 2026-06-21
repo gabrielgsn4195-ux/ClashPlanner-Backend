@@ -110,6 +110,11 @@ docker compose up -d --build
   instancia tendría las suyas y no podría descifrar los tokens de las demás).
 - **Clientes:** en el escritorio, fija `VITE_SYNC_URL` al dominio del API y añade
   ese dominio al `connect-src` de la CSP del cliente.
+- **Retención del historial temporal (paso post-deploy, una vez):** ejecuta
+  `sql/history-retention.sql` contra la BD de producción para fijar
+  `HISTORY_RETENTION_PERIOD` en las tablas `history.*` y que no crezcan sin techo
+  (cada push reescribe el snapshot completo). No va como migración EF a propósito: un
+  `ALTER` de tabla temporal no validable podría tumbar la migración de arranque. F-013.
 
 ## Endpoints
 

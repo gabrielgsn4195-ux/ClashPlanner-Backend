@@ -1,10 +1,13 @@
 -- Retención del historial de las tablas temporales (system-versioned) — auditoría F-013.
 --
--- El versionado temporal se provisiona FUERA DE BANDA (igual que su activación inicial),
--- no por migraciones EF. Sin retención, las tablas `history.*` crecen sin techo: el
--- protocolo de /sync borra y reinserta el snapshot completo del usuario EN CADA push, así
--- que cada push genera una fila de historial por entidad afectada. En Azure SQL serverless
--- eso multiplica el almacenamiento (coste, backups, tiempos de despliegue) sin límite.
+-- El versionado temporal lo ACTIVA la migración EF `AddTemporalTables`, pero la RETENCIÓN
+-- se aplica con este script aparte (manual, una vez, contra la BD de producción) en vez de
+-- añadir un ALTER de tabla temporal a una migración: ese ALTER no puede validarse aquí
+-- contra SQL Server real (los tests usan SQLite) y un fallo tumbaría la migración de
+-- arranque. Sin retención, las tablas `history.*` crecen sin techo: el protocolo de /sync
+-- borra y reinserta el snapshot completo del usuario EN CADA push, así que cada push genera
+-- una fila de historial por entidad afectada. En Azure SQL serverless eso multiplica el
+-- almacenamiento (coste, backups, tiempos de despliegue) sin límite.
 --
 -- Este script fija una retención de 90 días en las 15 tablas versionadas. SQL Server purga
 -- automáticamente el historial más antiguo. Ejecutar UNA vez contra la BD de producción
