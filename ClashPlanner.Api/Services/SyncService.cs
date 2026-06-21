@@ -166,6 +166,7 @@ public class SyncService(AppDbContext db, ILogger<SyncService> logger)
             });
             dto.Inventory[a.Id] = Deserialize<Dictionary<string, InventoryEntryDto>>(a.InventoryJson) ?? [];
             dto.HelperLevels[a.Id] = Deserialize<Dictionary<string, int>>(a.HelperLevelsJson) ?? [];
+            if (a.MapsModifiedAt > 0) dto.AccountMapsModifiedAt[a.Id] = a.MapsModifiedAt;
         }
 
         foreach (var j in jobs)
@@ -260,7 +261,8 @@ public class SyncService(AppDbContext db, ILogger<SyncService> logger)
                 PlanWindowJson = a.PlanWindow is null ? null : Serialize(a.PlanWindow),
                 InventoryJson = Serialize(data.Inventory.GetValueOrDefault(a.Id) ?? []),
                 HelperLevelsJson = Serialize(data.HelperLevels.GetValueOrDefault(a.Id) ?? []),
-                ModifiedAt = a.ModifiedAt
+                ModifiedAt = a.ModifiedAt,
+                MapsModifiedAt = data.AccountMapsModifiedAt.GetValueOrDefault(a.Id)
             });
         }
 

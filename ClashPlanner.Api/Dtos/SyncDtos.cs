@@ -19,6 +19,8 @@ public class SyncDataDto
     public Dictionary<string, Dictionary<string, InventoryEntryDto>> Inventory { get; set; } = [];
     /// <summary>accountId → cola ordenada de planificación.</summary>
     public Dictionary<string, List<PlanItemDto>> Plans { get; set; } = [];
+    /// <summary>Sello LWW por cuenta de los mapas atados a ella (inventario/ayudantes/cola). Ver F-006.</summary>
+    public Dictionary<string, long> AccountMapsModifiedAt { get; set; } = [];
     /// <summary>itemId → (nivel → override de tiempo/coste).</summary>
     public Dictionary<string, Dictionary<string, OverrideEntryDto>> Overrides { get; set; } = [];
     /// <summary>Sello LWW propio de los overrides (globales, no por cuenta). Ver auditoría F-005.</summary>

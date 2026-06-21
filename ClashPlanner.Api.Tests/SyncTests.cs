@@ -176,6 +176,33 @@ public class SyncTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task El_sello_de_mapas_por_cuenta_se_persiste_y_se_devuelve()
+    {
+        var client = await RegisterAndAuthAsync();
+        var data = new
+        {
+            accounts = new[]
+            {
+                new { id = "acc-1", name = "Aldea", color = "#fff", thLevel = 15, builders = 5, bhLevel = 10, bbBuilders = 2, goldPass = 0, modifiedAt = 1L }
+            },
+            jobs = Array.Empty<object>(),
+            boosts = Array.Empty<object>(),
+            helperStates = Array.Empty<object>(),
+            helperLevels = new { },
+            inventory = new { },
+            plans = new { },
+            accountMapsModifiedAt = new Dictionary<string, long> { ["acc-1"] = 1700000000777L }
+        };
+        var push = await client.PostAsJsonAsync("/sync", new { baseRevision = 0, data });
+        push.EnsureSuccessStatusCode();
+
+        var pull = await (await client.GetAsync("/sync")).Content.ReadFromJsonAsync<JsonElement>();
+        // El sello de mapas por cuenta (F-006) viaja de ida y vuelta intacto.
+        var maps = pull.GetProperty("data").GetProperty("accountMapsModifiedAt");
+        Assert.Equal(1700000000777L, maps.GetProperty("acc-1").GetInt64());
+    }
+
+    [Fact]
     public async Task Los_datos_estan_aislados_por_usuario()
     {
         var a = await RegisterAndAuthAsync();

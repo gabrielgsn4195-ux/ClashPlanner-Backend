@@ -32,6 +32,8 @@ public class AccountEntity
     /// <summary>Niveles de ayudantes de la cuenta (helperId → nivel), serializado.</summary>
     public string HelperLevelsJson { get; set; } = "{}";
     public long? ModifiedAt { get; set; }
+    /// <summary>Sello LWW de los mapas de la cuenta (inventario/ayudantes/cola). Ver F-006.</summary>
+    public long MapsModifiedAt { get; set; }
 }
 
 /// <summary>Una mejora en curso o programada.</summary>
