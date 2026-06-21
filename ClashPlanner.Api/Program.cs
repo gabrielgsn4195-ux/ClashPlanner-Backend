@@ -261,7 +261,15 @@ if (!app.Environment.IsDevelopment())
     // IP fija conocida → aceptamos las cabeceras de cualquier origen ascendente.
     var fwd = new ForwardedHeadersOptions
     {
-        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+        // Solo se desenrolla UN salto de X-Forwarded-For: se toma la entrada MÁS A LA
+        // DERECHA, que es la que añade el proxy de Render con la IP real del cliente.
+        // Cualquier IP que el cliente inyecte en la cabecera queda a la IZQUIERDA y se
+        // ignora, de modo que no puede falsear su IP para crear infinitas particiones del
+        // rate-limit por IP (anti-fuerza-bruta de /auth y cuota de /coc). Ver auditoría
+        // F-002. PREMISA: Render añade exactamente un salto con la IP real; si el modelo
+        // de despliegue cambiase (más proxies encadenados), revisar este límite.
+        ForwardLimit = 1
     };
     fwd.KnownIPNetworks.Clear();
     fwd.KnownProxies.Clear();
