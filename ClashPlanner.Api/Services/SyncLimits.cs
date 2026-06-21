@@ -65,15 +65,21 @@ public static class SyncLimits
         // comentario de MaxStringLength). El tope de bytes de Kestrel ya acota el total;
         // esto evita además strings sueltos desmesurados en BD.
         static bool TooLong(string? s) => (s?.Length ?? 0) > MaxStringLength;
+        // Los Id de entidad y las claves de lápida son columnas PK ACOTADAS (nvarchar(450)):
+        // un valor sobredimensionado haría fallar el INSERT (500). Se acotan como las demás
+        // claves para devolver un 413 limpio en su lugar. F-020.
+        static bool TooLongKey(string? s) => (s?.Length ?? 0) > MaxKeyLength;
 
         foreach (var a in d.Accounts)
-            if (TooLong(a.Name) || TooLong(a.Tag)) return "account: campo de texto demasiado largo";
+            if (TooLongKey(a.Id) || TooLong(a.Name) || TooLong(a.Tag)) return "account: campo de texto demasiado largo";
         foreach (var j in d.Jobs)
-            if (TooLong(j.ItemName) || TooLong(j.Note)) return "job: campo de texto demasiado largo";
+            if (TooLongKey(j.Id) || TooLong(j.ItemName) || TooLong(j.Note)) return "job: campo de texto demasiado largo";
         foreach (var b in d.Boosts)
-            if (TooLong(b.Name) || TooLong(b.BoostId)) return "boost: campo de texto demasiado largo";
+            if (TooLongKey(b.Id) || TooLong(b.Name) || TooLong(b.BoostId)) return "boost: campo de texto demasiado largo";
         foreach (var h in d.HelperStates)
-            if (TooLong(h.Name) || TooLong(h.Note)) return "helperState: campo de texto demasiado largo";
+            if (TooLongKey(h.Id) || TooLong(h.Name) || TooLong(h.Note)) return "helperState: campo de texto demasiado largo";
+        foreach (var t in d.Deletions)
+            if (TooLongKey(t.Kind) || TooLongKey(t.Id)) return "deletion: clave demasiado larga";
         foreach (var list in d.Plans.Values)
             foreach (var p in list)
                 if (TooLong(p.ItemName)) return "plan: campo de texto demasiado largo";

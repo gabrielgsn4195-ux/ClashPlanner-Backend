@@ -203,6 +203,29 @@ public class SyncTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Push_con_id_de_entidad_desmesurado_devuelve_413()
+    {
+        var client = await RegisterAndAuthAsync();
+        // Un Id de cuenta de 300 chars desborda la columna PK (nvarchar(450) en BD) y antes
+        // provocaba un 500; ahora SyncLimits lo rechaza con 413 limpio. F-020.
+        var data = new
+        {
+            accounts = new[]
+            {
+                new { id = new string('x', 300), name = "X", color = "#fff", thLevel = 1, builders = 1, bhLevel = 0, bbBuilders = 0, goldPass = 0, modifiedAt = 1L }
+            },
+            jobs = Array.Empty<object>(),
+            boosts = Array.Empty<object>(),
+            helperStates = Array.Empty<object>(),
+            helperLevels = new { },
+            inventory = new { },
+            plans = new { }
+        };
+        var push = await client.PostAsJsonAsync("/sync", new { baseRevision = 0, data });
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, push.StatusCode);
+    }
+
+    [Fact]
     public async Task Los_datos_estan_aislados_por_usuario()
     {
         var a = await RegisterAndAuthAsync();
