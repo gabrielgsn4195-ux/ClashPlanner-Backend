@@ -7,6 +7,9 @@ namespace ClashPlanner.Api.Endpoints;
 /// Proxy público de Clash of Clans: consulta un jugador a través del servidor
 /// (que usa un único token de servidor). No requiere sesión —el usuario nunca
 /// gestiona tokens— pero está limitado por tasa para no agotar la cuota de la API.
+/// El acceso anónimo es INTENCIONAL (la app consulta CoC sin cuenta de sync): riesgo
+/// aceptado y acotado por el rate-limit por IP; exigir auth rompería ese flujo y a los
+/// clientes ya desplegados. Ver auditoría F-022.
 /// </summary>
 public static class CocEndpoints
 {

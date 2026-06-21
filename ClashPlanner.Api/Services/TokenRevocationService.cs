@@ -15,7 +15,8 @@ namespace ClashPlanner.Api.Services;
 /// <para><b>Límite conocido:</b> al ser en memoria, no se comparte entre instancias ni
 /// sobrevive a un reinicio; tras un reinicio, un token revocado podría volver a valer hasta su
 /// expiración (≤ vida del access token). Suficiente para un despliegue de 1 instancia; para
-/// varias instancias haría falta una caché distribuida.</para>
+/// varias instancias haría falta una caché distribuida. Riesgo ACEPTADO (1 instancia): no se
+/// implementa la versión distribuida para no regresar el diseño «sin BD por petición». F-010.</para>
 /// </summary>
 public sealed class TokenRevocationService(IMemoryCache cache)
 {

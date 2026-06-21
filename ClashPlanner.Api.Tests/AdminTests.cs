@@ -203,4 +203,32 @@ public class AdminTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Contains(Models.Roles.Tecnico, RolesOf(target));
         Assert.DoesNotContain(Models.Roles.Usuario, RolesOf(target));
     }
+
+    [Fact]
+    public async Task Put_roles_admin_no_puede_autodegradarse()
+    {
+        using var f = new ApiFactory();
+        var (admin, adminEmail) = await AuthAsync(f, Models.Roles.Admin);
+        var list = await (await admin.GetAsync("/admin/users")).Content.ReadFromJsonAsync<JsonElement>();
+        var adminId = list.EnumerateArray()
+            .First(u => u.GetProperty("email").GetString() == adminEmail).GetProperty("id").GetString();
+        // Quitarse a sí mismo el rol Admin se rechaza (gobernanza). Ver auditoría F-021.
+        var res = await admin.PutAsJsonAsync($"/admin/users/{adminId}/roles", new { roles = new[] { Models.Roles.Usuario } });
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Contains("cannot-self-demote", await res.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Put_roles_admin_puede_degradar_a_otro_admin_si_no_es_el_ultimo()
+    {
+        using var f = new ApiFactory();
+        var (admin, _) = await AuthAsync(f, Models.Roles.Admin);
+        var (_, otherEmail) = await AuthAsync(f, Models.Roles.Admin); // segundo admin
+        var list = await (await admin.GetAsync("/admin/users")).Content.ReadFromJsonAsync<JsonElement>();
+        var otherId = list.EnumerateArray()
+            .First(u => u.GetProperty("email").GetString() == otherEmail).GetProperty("id").GetString();
+        // Con 2 admins, quitar el rol al OTRO está permitido (no es el último).
+        var res = await admin.PutAsJsonAsync($"/admin/users/{otherId}/roles", new { roles = new[] { Models.Roles.Usuario } });
+        res.EnsureSuccessStatusCode();
+    }
 }

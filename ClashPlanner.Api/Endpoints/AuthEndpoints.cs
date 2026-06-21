@@ -15,6 +15,14 @@ namespace ClashPlanner.Api.Endpoints;
 /// </summary>
 public static class AuthEndpoints
 {
+    /// <summary>
+    /// Hash dummy (formato Identity v3) precomputado una vez. En el login SIN usuario se
+    /// verifica contra él para igualar el coste de hashing y no filtrar por TIMING si un
+    /// email está registrado (el camino con usuario ejecuta CheckPasswordAsync). Ver F-023.
+    /// </summary>
+    private static readonly string DummyPasswordHash =
+        new PasswordHasher<ApplicationUser>().HashPassword(new ApplicationUser(), "timing-equalizer");
+
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
         // Rate limit por IP en todo /auth (login/registro/refresh): anti-fuerza-bruta
@@ -55,7 +63,13 @@ public static class AuthEndpoints
             var user = await users.FindByEmailAsync(req.Email);
             // 401 uniforme tanto si el usuario no existe como si la contraseña es incorrecta
             // o la cuenta está bloqueada: no revelamos cuál de los tres es (anti-enumeración).
-            if (user is null) return Results.Unauthorized();
+            if (user is null)
+            {
+                // Iguala el coste de hashing aunque el usuario NO exista, para no filtrar por
+                // timing si un email está registrado (el camino con usuario hashea). Ver F-023.
+                users.PasswordHasher.VerifyHashedPassword(new ApplicationUser(), DummyPasswordHash, req.Password);
+                return Results.Unauthorized();
+            }
             if (await users.IsLockedOutAsync(user)) return Results.Unauthorized();
             if (!await users.CheckPasswordAsync(user, req.Password))
             {

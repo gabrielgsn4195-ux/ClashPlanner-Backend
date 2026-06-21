@@ -8,12 +8,22 @@ using ClashPlanner.Api.Endpoints;
 using ClashPlanner.Api.Models;
 using ClashPlanner.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpLogging;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ── Observabilidad ──────────────────────────────────────────────────────────
+// En producción, logs ESTRUCTURADOS en JSON a stdout (Render los ingiere y quedan
+// correlacionables/consultables); en dev/test se conserva la consola legible. F-017.
+if (builder.Environment.IsProduction())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddJsonConsole();
+}
 
 // ── Configuración de tokens ─────────────────────────────────────────────────
 builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("Jwt"));
@@ -200,6 +210,16 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 // Respuestas de error uniformes (ProblemDetails) para el manejador global de excepciones.
 builder.Services.AddProblemDetails();
+// Logging de peticiones (in-box): método, ruta, status y duración. NO registra cabeceras
+// (Authorization) ni cuerpos (datos de sync/auth), para no filtrar nada sensible. F-017.
+builder.Services.AddHttpLogging(o =>
+{
+    o.LoggingFields = HttpLoggingFields.RequestMethod
+        | HttpLoggingFields.RequestPath
+        | HttpLoggingFields.ResponseStatusCode
+        | HttpLoggingFields.Duration;
+    o.CombineLogs = true;
+});
 
 var app = builder.Build();
 
@@ -295,12 +315,22 @@ else
     app.UseSwaggerUI();
 }
 
+app.UseHttpLogging();
 app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Liveness: ligero, NO toca la BD (Render lo usa como healthCheckPath y el keepalive lo
+// pinguea; tocar la BD despertaría la Azure SQL serverless en cada probe).
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Health");
+// Readiness SEPARADO: valida la conexión a la BD (200/503). No es el healthCheckPath;
+// se consulta puntualmente para diagnóstico, no en cada probe. Ver auditoría F-017.
+app.MapGet("/health/ready", async (AppDbContext db) =>
+    await db.Database.CanConnectAsync()
+        ? Results.Ok(new { status = "ready" })
+        : Results.Json(new { status = "unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable))
+    .WithTags("Health");
 app.MapAuthEndpoints();
 app.MapSyncEndpoints();
 app.MapCocEndpoints();

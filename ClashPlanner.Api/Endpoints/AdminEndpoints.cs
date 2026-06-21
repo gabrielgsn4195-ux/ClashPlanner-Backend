@@ -1,3 +1,5 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using ClashPlanner.Api.Data;
 using ClashPlanner.Api.Models;
 using ClashPlanner.Api.Services;
@@ -89,12 +91,26 @@ public static class AdminEndpoints
             .RequireAuthorization(p => p.RequireRole(Roles.Admin));
 
         g.MapPut("/users/{id}/roles", async (
-            string id, RolesUpdate body, UserManager<ApplicationUser> users) =>
+            string id, RolesUpdate body, UserManager<ApplicationUser> users, ClaimsPrincipal caller) =>
         {
             var valid = body.Roles.Where(Roles.All.Contains).Distinct().ToArray();
             var user = await users.FindByIdAsync(id);
             if (user is null) return Results.NotFound();
             var current = await users.GetRolesAsync(user);
+
+            // Salvaguardas de gobernanza: no dejar el sistema sin Admins. Solo aplican
+            // cuando se va a QUITAR el rol Admin a quien lo tiene. Ver auditoría F-021.
+            if (current.Contains(Roles.Admin) && !valid.Contains(Roles.Admin))
+            {
+                // (a) Un Admin no puede auto-degradarse (evita quedarse fuera por error).
+                var callerId = caller.FindFirstValue(JwtRegisteredClaimNames.Sub)
+                    ?? caller.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (callerId == id) return Results.BadRequest(new { reason = "cannot-self-demote" });
+                // (b) No quitar el rol al ÚLTIMO Admin (el sistema quedaría sin gobernanza).
+                var admins = await users.GetUsersInRoleAsync(Roles.Admin);
+                if (admins.Count <= 1) return Results.BadRequest(new { reason = "last-admin" });
+            }
+
             await users.RemoveFromRolesAsync(user, current.Except(valid));
             await users.AddToRolesAsync(user, valid.Except(current));
             return Results.Ok(new { id, roles = valid });
