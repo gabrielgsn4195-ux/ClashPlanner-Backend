@@ -225,7 +225,10 @@ public class SyncService(AppDbContext db, ILogger<SyncService> logger)
             dto.Plans[p.AccountId] = Deserialize<List<PlanItemDto>>(p.ItemsJson) ?? [];
 
         if (overrideRow is not null)
+        {
             dto.Overrides = Deserialize<Dictionary<string, Dictionary<string, OverrideEntryDto>>>(overrideRow.Json) ?? [];
+            dto.OverridesModifiedAt = overrideRow.ModifiedAt;
+        }
 
         foreach (var d in deletions)
             dto.Deletions.Add(new TombstoneDto { Kind = d.Kind, Id = d.EntityId, ModifiedAt = d.ModifiedAt });
@@ -320,7 +323,7 @@ public class SyncService(AppDbContext db, ILogger<SyncService> logger)
         foreach (var (accountId, items) in data.Plans)
             db.Plans.Add(new PlanEntity { UserId = userId, AccountId = accountId, ItemsJson = Serialize(items) });
 
-        db.Overrides.Add(new OverrideEntity { UserId = userId, Json = Serialize(data.Overrides) });
+        db.Overrides.Add(new OverrideEntity { UserId = userId, Json = Serialize(data.Overrides), ModifiedAt = data.OverridesModifiedAt });
 
         // Deduplica por (kind, id) por si el cliente envía lápidas repetidas (la
         // PK es UserId+Kind+EntityId).

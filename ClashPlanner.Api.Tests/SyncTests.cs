@@ -147,6 +147,35 @@ public class SyncTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task El_sello_propio_de_overrides_se_persiste_y_se_devuelve()
+    {
+        var client = await RegisterAndAuthAsync();
+        var data = new
+        {
+            accounts = Array.Empty<object>(),
+            jobs = Array.Empty<object>(),
+            boosts = Array.Empty<object>(),
+            helperStates = Array.Empty<object>(),
+            helperLevels = new { },
+            inventory = new { },
+            plans = new { },
+            overrides = new Dictionary<string, object>
+            {
+                ["home:cannon"] = new Dictionary<string, object> { ["2"] = new { cost = 7 } }
+            },
+            overridesModifiedAt = 1700000000123L
+        };
+        var push = await client.PostAsJsonAsync("/sync", new { baseRevision = 0, data });
+        push.EnsureSuccessStatusCode();
+
+        var pull = await (await client.GetAsync("/sync")).Content.ReadFromJsonAsync<JsonElement>();
+        var d = pull.GetProperty("data");
+        // El sello propio de overrides (F-005) viaja de ida y vuelta intacto.
+        Assert.Equal(1700000000123L, d.GetProperty("overridesModifiedAt").GetInt64());
+        Assert.Equal(7, d.GetProperty("overrides").GetProperty("home:cannon").GetProperty("2").GetProperty("cost").GetInt32());
+    }
+
+    [Fact]
     public async Task Los_datos_estan_aislados_por_usuario()
     {
         var a = await RegisterAndAuthAsync();

@@ -21,6 +21,8 @@ public class SyncDataDto
     public Dictionary<string, List<PlanItemDto>> Plans { get; set; } = [];
     /// <summary>itemId → (nivel → override de tiempo/coste).</summary>
     public Dictionary<string, Dictionary<string, OverrideEntryDto>> Overrides { get; set; } = [];
+    /// <summary>Sello LWW propio de los overrides (globales, no por cuenta). Ver auditoría F-005.</summary>
+    public long OverridesModifiedAt { get; set; }
     /// <summary>Lápidas de borrados (tombstones) para propagar eliminaciones.</summary>
     public List<TombstoneDto> Deletions { get; set; } = [];
 }

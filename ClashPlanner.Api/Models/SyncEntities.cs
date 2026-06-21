@@ -105,6 +105,8 @@ public class OverrideEntity
 {
     [Required] public string UserId { get; set; } = string.Empty;
     public string Json { get; set; } = "{}";
+    /// <summary>Sello LWW propio de los overrides (globales). Ver auditoría F-005.</summary>
+    public long ModifiedAt { get; set; }
 }
 
 /// <summary>
