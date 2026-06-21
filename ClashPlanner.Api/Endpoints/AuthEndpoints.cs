@@ -65,8 +65,10 @@ public static class AuthEndpoints
             // o la cuenta está bloqueada: no revelamos cuál de los tres es (anti-enumeración).
             if (user is null)
             {
-                // Iguala el coste de hashing aunque el usuario NO exista, para no filtrar por
-                // timing si un email está registrado (el camino con usuario hashea). Ver F-023.
+                // Iguala el coste DOMINANTE (el hashing PBKDF2) aunque el usuario NO exista,
+                // para no filtrar por timing si un email está registrado. Queda un diferencial
+                // residual menor (el camino con usuario hace además IsLockedOutAsync y escrituras
+                // de fallo) que el hashing domina con holgura; riesgo aceptado. Ver F-023.
                 users.PasswordHasher.VerifyHashedPassword(new ApplicationUser(), DummyPasswordHash, req.Password);
                 return Results.Unauthorized();
             }
