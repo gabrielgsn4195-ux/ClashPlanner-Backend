@@ -19,6 +19,9 @@ services:
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
+      # Migra en el ARRANQUE (cómodo con 1 instancia en Render free). Si se escala a ≥2
+      # réplicas, mover las migraciones a un paso del despliegue para evitar una carrera
+      # entre arranques simultáneos. Ver auditoría F-024.
       - key: Database__Migrate
         value: "true"
       - key: DataProtection__KeysPath
@@ -29,8 +32,12 @@ services:
         value: ClashPlanner
       - key: Jwt__Audience
         value: ClashPlanner
+      # CORS NO afecta al cliente Electron (autentica por cabecera Authorization, sin
+      # Origin web sujeto a la política del navegador). Este valor solo importa cuando
+      # exista un cliente WEB: poner ahí su dominio HTTPS real (NUNCA un http://). Hasta
+      # entonces es un placeholder. Ver auditoría F-014.
       - key: Cors__Origins__0
-        value: http://localhost:5173 # origen del cliente; se ajusta después
+        value: http://localhost:5173
       - key: Sync__MinClientVersion
         value: "0.1.9" # versión mínima de cliente aceptada en /sync (gate 426). Subir ante un cambio incompatible; nunca por encima de la última release. Clientes < 0.1.9 no mandan la cabecera → pasan (fail-open).
       - key: ConnectionStrings__DefaultConnection

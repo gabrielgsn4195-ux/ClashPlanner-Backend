@@ -23,6 +23,16 @@ if (string.IsNullOrWhiteSpace(jwt.SigningKey) || jwt.SigningKey.Length < 32)
         "Falta 'Jwt:SigningKey' (≥32 caracteres). Configúralo en appsettings.Development.json (dev) " +
         "o por variable de entorno / user-secrets (producción).");
 
+// Guardrail extra: en producción NO se admite una clave de ejemplo de dev/test. Si el
+// entorno se fijara mal (ASPNETCORE_ENVIRONMENT=Development/Testing en prod), los JWT se
+// firmarían con una clave pública conocida y serían falsificables. Ver auditoría F-030.
+if (builder.Environment.IsProduction() &&
+    (jwt.SigningKey.StartsWith("dev-only", StringComparison.OrdinalIgnoreCase) ||
+     jwt.SigningKey.StartsWith("test-", StringComparison.OrdinalIgnoreCase)))
+    throw new InvalidOperationException(
+        "La 'Jwt:SigningKey' de producción no puede ser una clave de ejemplo de dev/test. " +
+        "Configura una clave real por variable de entorno (Jwt__SigningKey) o user-secrets.");
+
 // ── Base de datos (SQL Server) ──────────────────────────────────────────────
 var conn = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Falta la cadena de conexión 'DefaultConnection'.");
