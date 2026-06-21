@@ -110,4 +110,55 @@ public class EventsTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.True(e.GetProperty("banner").GetProperty("show").GetBoolean());
         Assert.Equal("Cuidado con tus gemas 💎", e.GetProperty("banner").GetProperty("message").GetString());
     }
+
+    [Fact]
+    public async Task Put_events_con_effects_null_no_revienta_y_se_guarda()
+    {
+        using var f = new ApiFactory();
+        var staff = await AuthAsync(f, Roles.Tecnico);
+        // "effects": null en el JSON → antes provocaba NullReferenceException (500). F-009.
+        var events = new object[]
+        {
+            new { id = "e1", name = "Sin efectos", enabled = true, goblinBuilder = false, effects = (object?)null }
+        };
+        var put = await staff.PutAsJsonAsync("/events", events);
+        put.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task Put_events_con_demasiados_eventos_devuelve_400()
+    {
+        using var f = new ApiFactory();
+        var staff = await AuthAsync(f, Roles.Tecnico);
+        var events = Enumerable.Range(0, 201)
+            .Select(i => new { id = $"e{i}", name = "x", enabled = true, goblinBuilder = false, effects = Array.Empty<object>() })
+            .ToArray();
+        var put = await staff.PutAsJsonAsync("/events", events);
+        Assert.Equal(HttpStatusCode.BadRequest, put.StatusCode);
+    }
+
+    [Fact]
+    public async Task Put_events_sanea_el_html_del_rotulo_en_el_servidor()
+    {
+        using var f = new ApiFactory();
+        var staff = await AuthAsync(f, Roles.Tecnico);
+        var events = new object[]
+        {
+            new
+            {
+                id = "e1", name = "X", enabled = true, goblinBuilder = false,
+                effects = Array.Empty<object>(),
+                banner = new { show = true, message = "<b>hola</b><script>alert(1)</script><img src=x onerror=alert(1)>" }
+            }
+        };
+        (await staff.PutAsJsonAsync("/events", events)).EnsureSuccessStatusCode();
+
+        var body = await (await staff.GetAsync("/events")).Content.ReadFromJsonAsync<JsonElement>();
+        var msg = body.EnumerateArray().First().GetProperty("banner").GetProperty("message").GetString()!;
+        // El formato permitido se conserva; el script, el handler y la etiqueta no permitida se eliminan. F-011.
+        Assert.Contains("hola", msg);
+        Assert.DoesNotContain("script", msg, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("onerror", msg, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<img", msg, StringComparison.OrdinalIgnoreCase);
+    }
 }

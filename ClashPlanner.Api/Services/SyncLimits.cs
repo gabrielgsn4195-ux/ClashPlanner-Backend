@@ -21,6 +21,10 @@ public static class SyncLimits
     public const int MaxMapEntries = 100_000;
     /// <summary>Longitud máxima de los campos de texto libre (nombres, notas, etc.).</summary>
     public const int MaxStringLength = 4_000;
+    /// <summary>Tope del número de CLAVES de primer nivel de los mapas (accountId / itemId).</summary>
+    public const int MaxMapKeys = 10_000;
+    /// <summary>Longitud máxima de una clave de mapa que acaba en columna de BD.</summary>
+    public const int MaxKeyLength = 256;
 
     /// <summary>
     /// Devuelve un mensaje describiendo el primer límite excedido, o <c>null</c> si el
@@ -41,6 +45,21 @@ public static class SyncLimits
                        + d.Overrides.Values.Sum(v => v.Count)
                        + d.HelperLevels.Values.Sum(v => v.Count);
         if (mapEntries > MaxMapEntries) return $"map-entries ({mapEntries} > {MaxMapEntries})";
+
+        // Nº de CLAVES de primer nivel de los mapas (accountId / itemId): el contador de
+        // entradas internas no acota cuántas claves hay, y cada clave de Plans/Inventory
+        // genera filas/escrituras. Se acota aparte del tope de bytes de Kestrel. F-020.
+        if (d.Plans.Count > MaxMapKeys) return $"plans-keys ({d.Plans.Count} > {MaxMapKeys})";
+        if (d.Inventory.Count > MaxMapKeys) return $"inventory-keys ({d.Inventory.Count} > {MaxMapKeys})";
+        if (d.HelperLevels.Count > MaxMapKeys) return $"helperLevels-keys ({d.HelperLevels.Count} > {MaxMapKeys})";
+        if (d.Overrides.Count > MaxMapKeys) return $"overrides-keys ({d.Overrides.Count} > {MaxMapKeys})";
+        if (d.AccountMapsModifiedAt.Count > MaxMapKeys) return $"accountMaps-keys ({d.AccountMapsModifiedAt.Count} > {MaxMapKeys})";
+
+        // Longitud de las claves que acaban en columnas de BD (PK de Plans, etc.).
+        static bool AnyKeyTooLong(IEnumerable<string> keys) => keys.Any(k => k.Length > MaxKeyLength);
+        if (AnyKeyTooLong(d.Plans.Keys) || AnyKeyTooLong(d.Inventory.Keys)
+            || AnyKeyTooLong(d.HelperLevels.Keys) || AnyKeyTooLong(d.Overrides.Keys))
+            return "map: clave demasiado larga";
 
         // Longitud de los campos de texto libre de cada entidad (coherente con el
         // comentario de MaxStringLength). El tope de bytes de Kestrel ya acota el total;
