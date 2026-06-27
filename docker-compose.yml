@@ -1,25 +1,27 @@
-# Despliegue del backend ClashPlanner: API + SQL Server.
+# Despliegue/desarrollo local del backend ClashPlanner: API + PostgreSQL.
 #
 # Uso:
-#   cd server
-#   cp .env.example .env   # y rellena SA_PASSWORD y JWT_SIGNING_KEY
+#   cd ClashPlanner-Backend
+#   cp .env.example .env   # y rellena POSTGRES_PASSWORD y JWT_SIGNING_KEY
 #   docker compose up -d --build
 #
 # La API queda en http://localhost:5117 (mapea el 8080 del contenedor). En
-# producción, ponla detrás de un proxy inverso con HTTPS y ajusta WEB_ORIGIN.
+# producción NO se usa este Postgres: la BD es Neon (serverless), inyectada por
+# la variable de entorno ConnectionStrings__DefaultConnection en Render.
 
 services:
   db:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: postgres:16
     environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: ${SA_PASSWORD}
+      POSTGRES_DB: clashplanner
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "1433:1433"
+      - "5432:5432"
     volumes:
-      - mssql-data:/var/opt/mssql
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d clashplanner"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -28,8 +30,9 @@ services:
     build: ./ClashPlanner.Api
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      # SQL Server del propio compose (red interna 'db').
-      ConnectionStrings__DefaultConnection: "Server=db;Database=ClashPlanner;User Id=sa;Password=${SA_PASSWORD};TrustServerCertificate=True;Encrypt=False"
+      # PostgreSQL del propio compose (red interna 'db'). En el contenedor no hace
+      # falta SSL (red privada); en Neon la cadena lleva «SSL Mode=Require».
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=clashplanner;Username=postgres;Password=${POSTGRES_PASSWORD}"
       # Secreto de firma JWT (≥32 caracteres). NUNCA en el repo.
       Jwt__SigningKey: ${JWT_SIGNING_KEY}
       Jwt__Issuer: ClashPlanner
@@ -49,5 +52,5 @@ services:
         condition: service_healthy
 
 volumes:
-  mssql-data:
+  pgdata:
   dp-keys:

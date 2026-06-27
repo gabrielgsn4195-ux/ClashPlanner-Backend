@@ -5,7 +5,7 @@ namespace ClashPlanner.Api.Services;
 /// <summary>
 /// Revocación de access tokens (JWT, sin estado) EN MEMORIA, para que al cerrar sesión el
 /// token deje de valer de inmediato sin tener que tocar la BD en cada petición (el camino
-/// caliente debe evitar la BD: ver la nota de Azure SQL serverless en el proyecto).
+/// caliente debe evitar la BD: ver la nota del Postgres serverless (Neon) en el proyecto).
 ///
 /// <para>Dos mecanismos: una <b>denylist por <c>jti</c></b> (cierre de UN dispositivo) y un
 /// <b>epoch por usuario</b> (cierre de TODAS las sesiones: invalida los tokens emitidos antes

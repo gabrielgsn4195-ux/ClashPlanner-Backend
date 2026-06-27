@@ -43,12 +43,13 @@ if (builder.Environment.IsProduction() &&
         "La 'Jwt:SigningKey' de producción no puede ser una clave de ejemplo de dev/test. " +
         "Configura una clave real por variable de entorno (Jwt__SigningKey) o user-secrets.");
 
-// ── Base de datos (SQL Server) ──────────────────────────────────────────────
+// ── Base de datos (PostgreSQL / Neon) ───────────────────────────────────────
 var conn = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Falta la cadena de conexión 'DefaultConnection'.");
 // `EnableRetryOnFailure` cubre los fallos transitorios de conexión (p. ej. al
-// arrancar antes de que SQL Server del contenedor esté listo).
-builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlServer(conn, sql => sql.EnableRetryOnFailure()));
+// reanudar el endpoint de Neon tras suspenderse por inactividad, o al arrancar
+// antes de que el Postgres del contenedor esté listo).
+builder.Services.AddDbContext<AppDbContext>(o => o.UseNpgsql(conn, npg => npg.EnableRetryOnFailure()));
 
 // Ajustes que se aplican AL ARRANCAR (rate-limit del proxy y orígenes CORS): se
 // leen de la tabla `Settings` si ya existe; si no (primera ejecución), se usan
@@ -70,7 +71,7 @@ builder.WebHost.ConfigureKestrel(o =>
 Exception? settingsProbeError = null;
 try
 {
-    var probeOpts = new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(conn).Options;
+    var probeOpts = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(conn).Options;
     using var probe = new AppDbContext(probeOpts);
     foreach (var r in probe.Settings.AsNoTracking()
         .Where(s => s.Key == SettingKeys.RateLimitCocPerMinute || s.Key == SettingKeys.CorsOrigins).ToList())
@@ -322,7 +323,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // Liveness: ligero, NO toca la BD (Render lo usa como healthCheckPath y el keepalive lo
-// pinguea; tocar la BD despertaría la Azure SQL serverless en cada probe).
+// pinguea; tocar la BD despertaría el Postgres serverless de Neon en cada probe).
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).WithTags("Health");
 // Readiness SEPARADO: valida la conexión a la BD (200/503). No es el healthCheckPath;
 // se consulta puntualmente para diagnóstico, no en cada probe. Ver auditoría F-017.

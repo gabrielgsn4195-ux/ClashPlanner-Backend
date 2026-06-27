@@ -56,9 +56,10 @@ public class CocService(
     private async Task<CocResult> FetchAsync(string path)
     {
         // El token y los ajustes se leen de la VARIABLE DE ENTORNO (config) cuando está
-        // definida, para NO tocar la tabla `Settings` en el camino caliente: con Azure SQL
-        // serverless (que se pausa) leer la BD en cada `/coc` colgaría la petición mientras
-        // la BD despierta. Solo si no hay token en config se cae a la BD (token de la admin UI).
+        // definida, para NO tocar la tabla `Settings` en el camino caliente: con un Postgres
+        // serverless como Neon (que se suspende por inactividad) leer la BD en cada `/coc`
+        // colgaría la petición mientras la BD despierta. Solo si no hay token en config se cae
+        // a la BD (token de la admin UI).
         string? token = config["Coc:Token"];
         bool useProxy;
         string proxyUrl;

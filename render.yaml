@@ -1,7 +1,8 @@
 # Blueprint de Render para el backend de ClashPlanner (Docker, plan free).
 # Render construye ClashPlanner.Api/Dockerfile desde el repo y expone el servicio.
-# La BD sigue siendo la Azure SQL (clashplanner-sql); su firewall debe permitir las
-# IPs de salida de Render (se añaden con az tras crear el servicio).
+# La BD es PostgreSQL en Neon (serverless, plan free). La cadena de conexión va en el
+# secreto ConnectionStrings__DefaultConnection (formato Npgsql, con «SSL Mode=Require»);
+# Neon permite conexiones desde cualquier IP, así que no hay firewall que abrir.
 #
 # Los dos secretos (ConnectionStrings__DefaultConnection y Jwt__SigningKey) van con
 # `sync: false`: NO se versionan; se introducen en el panel de Render.

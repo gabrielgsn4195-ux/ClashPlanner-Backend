@@ -2,23 +2,24 @@
 
 API de **ClashPlanner**: sincroniza los datos del planificador entre dispositivos y
 **proxea la API oficial de Clash of Clans** con un único token de servidor (el
-usuario final nunca lo ve). Construida con ASP.NET Core 10 + EF Core (SQL Server) +
+usuario final nunca lo ve). Construida con ASP.NET Core 10 + EF Core (PostgreSQL/Npgsql) +
 Identity (email/contraseña) + JWT con refresh tokens.
 
-- **Stack:** ASP.NET Core 10 (`net10.0`) · EF Core (SQL Server) · ASP.NET Identity · JWT + refresh tokens
+- **Stack:** ASP.NET Core 10 (`net10.0`) · EF Core (PostgreSQL / Npgsql) · ASP.NET Identity · JWT + refresh tokens
 - **Solución:** `ClashPlanner.slnx` · API en `ClashPlanner.Api` · tests en `ClashPlanner.Api.Tests` (xUnit)
 
 ## Desarrollo (local)
 
-Requisitos: .NET 10 SDK y SQL Server LocalDB (o Express/Docker).
+Requisitos: .NET 10 SDK y un PostgreSQL local (lo más fácil: `docker compose up -d db`,
+que levanta uno en `localhost:5432`).
 
 ```bash
 cd ClashPlanner.Api
-dotnet ef database update          # crea el esquema en LocalDB (primera vez)
+dotnet ef database update          # crea el esquema en el Postgres local (primera vez)
 dotnet run --no-launch-profile     # http://localhost:5117  ·  Swagger en /swagger
 ```
 
-La configuración de desarrollo (cadena de conexión LocalDB y clave JWT de dev) va
+La configuración de desarrollo (cadena de conexión Postgres y clave JWT de dev) va
 en `appsettings.Development.json`. Tests:
 
 ```bash
@@ -48,7 +49,7 @@ ClashPlanner.Api/
 ├── Dtos/                Contratos de auth y sync
 ├── Data/AppDbContext.cs
 └── Migrations/
-docker-compose.yml       API + SQL Server para producción
+docker-compose.yml       API + PostgreSQL para desarrollo local
 ```
 
 ## Configuración general (tabla `Settings`)
@@ -77,7 +78,7 @@ token de la BD con *fallback* a `config["Coc:Token"]`.
 
 | Variable | Descripción |
 |---|---|
-| `ConnectionStrings__DefaultConnection` | Cadena de conexión a SQL Server |
+| `ConnectionStrings__DefaultConnection` | Cadena de conexión a PostgreSQL (formato Npgsql; en Neon incluye `SSL Mode=Require`) |
 | `Jwt__SigningKey` | Clave de firma JWT (**≥32 caracteres**; el arranque falla si no) |
 | `Jwt__Issuer` / `Jwt__Audience` | Emisor/audiencia del JWT |
 | `Cors__Origins__0` | Origen permitido por CORS (web) |
@@ -85,36 +86,41 @@ token de la BD con *fallback* a `config["Coc:Token"]`.
 | `DataProtection__Store` | `Database` para compartir las claves entre **varias instancias** vía la BD (tiene prioridad sobre `KeysPath`) |
 | `Database__Migrate` | Aplicar migraciones al arrancar (`true` por defecto) |
 
-## Producción (Docker Compose)
+## Desarrollo local con Docker Compose
 
-Levanta la API + SQL Server con datos y claves persistentes:
+Levanta la API + PostgreSQL con datos y claves persistentes:
 
 ```bash
-cp .env.example .env          # rellena SA_PASSWORD y JWT_SIGNING_KEY
+cp .env.example .env          # rellena POSTGRES_PASSWORD y JWT_SIGNING_KEY
 docker compose up -d --build
 ```
 
 - La API escucha en `http://localhost:5117` (puerto 8080 del contenedor).
 - Las migraciones se aplican solas al arrancar (`Database:Migrate=true`).
 - Las claves de Data Protection (cifran el token de CoC) persisten en el volumen
-  `dp-keys`; los datos de SQL en `mssql-data`.
+  `dp-keys`; los datos de Postgres en `pgdata`.
+
+> **Producción:** la API se despliega en Render (ver `render.yaml`) y la BD es
+> **PostgreSQL en Neon** (serverless, plan free). La cadena de conexión de Neon se
+> pone como secreto `ConnectionStrings__DefaultConnection` en el panel de Render
+> (formato Npgsql, con `SSL Mode=Require`). Este Compose es solo para local.
 
 ### Puesta en producción real
-- **HTTPS:** sirve la API tras un proxy inverso (Nginx, Caddy, Traefik) que termine
-  TLS; el contenedor habla HTTP en el 8080.
-- **Secretos:** `JWT_SIGNING_KEY` y `SA_PASSWORD` por variables de entorno / gestor
-  de secretos; nunca en el repositorio (`.env` está en `.gitignore`).
+- **HTTPS:** Render termina TLS por ti; el contenedor habla HTTP en el 8080.
+- **Secretos:** `JWT_SIGNING_KEY` y la cadena de conexión por variables de entorno /
+  gestor de secretos; nunca en el repositorio (`.env` está en `.gitignore`).
 - **CORS:** pon en `Cors:Origins` el dominio de la app web.
 - **Escalado horizontal:** con varias réplicas tras un balanceador, usa
   `DataProtection__Store=Database` para que todas compartan las claves (si no, cada
   instancia tendría las suyas y no podría descifrar los tokens de las demás).
 - **Clientes:** en el escritorio, fija `VITE_SYNC_URL` al dominio del API y añade
   ese dominio al `connect-src` de la CSP del cliente.
-- **Retención del historial temporal (paso post-deploy, una vez):** ejecuta
-  `sql/history-retention.sql` contra la BD de producción para fijar
-  `HISTORY_RETENTION_PERIOD` en las tablas `history.*` y que no crezcan sin techo
-  (cada push reescribe el snapshot completo). No va como migración EF a propósito: un
-  `ALTER` de tabla temporal no validable podría tumbar la migración de arranque. F-013.
+
+> **Nota histórica:** hasta jun-2026 la BD era Azure SQL con tablas temporales
+> (system-versioning) y un `sql/history-retention.sql` para acotar el historial. Al
+> migrar a PostgreSQL (Neon) se eliminó el historial automático (Postgres no tiene
+> system-versioning nativo). Si se quisiera reintroducir auditoría, sería con tablas
+> `history` + triggers o la extensión `temporal_tables`.
 
 ## Endpoints
 

@@ -10,7 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace ClashPlanner.Api.Tests;
 
 /// <summary>
-/// Fábrica de la API para los tests de integración. Sustituye SQL Server por
+/// Fábrica de la API para los tests de integración. Sustituye PostgreSQL (Npgsql) por
 /// SQLite en memoria (con una conexión abierta durante toda la vida de la
 /// fábrica para que la base persista entre peticiones) y desactiva la
 /// auto-migración, creando el esquema con <c>EnsureCreated</c>.
@@ -35,8 +35,8 @@ public class ApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
-            // Quita el DbContext y TODOS los servicios internos del proveedor SQL
-            // Server que registró Program; si no, EF ve dos proveedores y falla.
+            // Quita el DbContext y TODOS los servicios internos del proveedor PostgreSQL
+            // (Npgsql) que registró Program; si no, EF ve dos proveedores y falla.
             var efDescriptors = services
                 .Where(d => d.ServiceType.FullName?.StartsWith("Microsoft.EntityFrameworkCore.") == true
                             || d.ServiceType == typeof(DbContextOptions<AppDbContext>)

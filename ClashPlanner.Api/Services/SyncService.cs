@@ -44,7 +44,7 @@ public class SyncService(AppDbContext db, ILogger<SyncService> logger)
     /// <param name="req">Snapshot a guardar y revisión base del cliente.</param>
     public async Task<SyncResponse> PushAsync(string userId, PushRequest req)
     {
-        // `EnableRetryOnFailure` (estrategia de reintento de SQL Server) NO admite
+        // `EnableRetryOnFailure` (estrategia de reintento de Npgsql) NO admite
         // transacciones iniciadas a mano: hay que ejecutarlas dentro de una estrategia de
         // ejecución para que el bloque se reintente como una unidad.
         var strategy = db.Database.CreateExecutionStrategy();
