@@ -37,6 +37,13 @@ public class EventEffectDto
     public List<string>? Categories { get; set; }
     /// <summary>Recurso (solo coste).</summary>
     public string? Resource { get; set; }
+    /// <summary>
+    /// Ayuntamiento mínimo (aldea del efecto: principal → TH, nocturna → Taller).
+    /// null = sin mínimo. Permite descuentos distintos por TH (Mejoramanía real).
+    /// </summary>
+    public int? ThMin { get; set; }
+    /// <summary>Ayuntamiento/Taller máximo. null = sin máximo.</summary>
+    public int? ThMax { get; set; }
 }
 
 /// <summary>Rótulo informativo del evento (el mensaje admite emojis).</summary>

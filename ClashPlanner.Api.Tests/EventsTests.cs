@@ -54,7 +54,7 @@ public class EventsTests(ApiFactory factory) : IClassFixture<ApiFactory>
             startsAt = 1000L,
             endsAt = 2000L,
             goblinBuilder = true,
-            effects = new[] { new { target = "cost", percent = 50.0, categories = new[] { "defense", "wall" } } },
+            effects = new[] { new { target = "cost", percent = 50.0, categories = new[] { "defense", "wall" }, thMin = (int?)10, thMax = (int?)16 } },
             banner = new { show = true, message = "Cuidado con tus gemas 💎" }
         }
     };
@@ -107,8 +107,33 @@ public class EventsTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var cats = e.GetProperty("effects")[0].GetProperty("categories").EnumerateArray().Select(c => c.GetString()).ToList();
         Assert.Equal(new[] { "defense", "wall" }, cats);
         Assert.Equal(50.0, e.GetProperty("effects")[0].GetProperty("percent").GetDouble());
+        // El rango de TH del efecto debe sobrevivir al round-trip (si faltara en el
+        // DTO, la re-serialización del PUT lo descartaría en silencio).
+        Assert.Equal(10, e.GetProperty("effects")[0].GetProperty("thMin").GetInt32());
+        Assert.Equal(16, e.GetProperty("effects")[0].GetProperty("thMax").GetInt32());
         Assert.True(e.GetProperty("banner").GetProperty("show").GetBoolean());
         Assert.Equal("Cuidado con tus gemas 💎", e.GetProperty("banner").GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task Put_events_con_rango_de_th_invalido_devuelve_400()
+    {
+        using var f = new ApiFactory();
+        var staff = await AuthAsync(f, Roles.Tecnico);
+        // min > max
+        var invertido = new object[]
+        {
+            new { id = "e1", name = "Rango", enabled = true, effects = new[] { new { target = "time", percent = 25.0, thMin = 17, thMax = 10 } } }
+        };
+        var res = await staff.PutAsJsonAsync("/events", invertido);
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        // nivel fuera de rango plausible
+        var fuera = new object[]
+        {
+            new { id = "e1", name = "Rango", enabled = true, effects = new[] { new { target = "time", percent = 25.0, thMin = 0 } } }
+        };
+        res = await staff.PutAsJsonAsync("/events", fuera);
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
     }
 
     [Fact]

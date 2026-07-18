@@ -81,8 +81,15 @@ public static class EventsEndpoints
                 if ((e.Name?.Length ?? 0) > MaxTextLength || (e.Banner?.Message?.Length ?? 0) > MaxTextLength)
                     return Results.BadRequest(new { reason = "text-too-long" });
                 foreach (var eff in effects)
+                {
                     if (!ValidTargets.Contains(eff.Target))
                         return Results.BadRequest(new { reason = "invalid-target", target = eff.Target });
+                    // Rango de Ayuntamiento/Taller opcional del efecto: niveles plausibles
+                    // y min ≤ max (si vienen ambos).
+                    if (eff.ThMin is < 1 or > 100 || eff.ThMax is < 1 or > 100 ||
+                        (eff.ThMin is not null && eff.ThMax is not null && eff.ThMin > eff.ThMax))
+                        return Results.BadRequest(new { reason = "invalid-th-range" });
+                }
                 e.Effects = effects;
                 // Saneo en el SERVIDOR del HTML del rótulo (se reparte a TODOS los usuarios):
                 // defensa en profundidad además del saneo del cliente. Ver auditoría F-011.
