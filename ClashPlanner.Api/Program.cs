@@ -337,6 +337,7 @@ app.MapSyncEndpoints();
 app.MapCocEndpoints();
 app.MapAdminEndpoints();
 app.MapEventsEndpoints();
+app.MapCraftedEndpoints();
 
 app.Run();
 

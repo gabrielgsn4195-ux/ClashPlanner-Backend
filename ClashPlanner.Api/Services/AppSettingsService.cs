@@ -17,6 +17,7 @@ public static class SettingKeys
     public const string RateLimitCocPerMinute = "RateLimit:CocPerMinute"; // int (aplica al reiniciar)
     public const string CorsOrigins = "Cors:Origins";        // csv (aplica al reiniciar)
     public const string EventsConfig = "Events:Config";      // JSON de los eventos globales
+    public const string CraftedConfig = "Crafted:Config";    // JSON de defensas artesanales activas
 
     /// <summary>URL base de la API oficial de CoC (acceso directo). Valor por defecto
     /// de <see cref="CocDirectUrl"/> y semilla de la tabla `Settings`.</summary>
